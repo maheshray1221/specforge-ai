@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+button, input, textarea, select { font: inherit; }
+::selection { background: #bae6fd; color: #082f49; }
+
+.soft-grid {
+  background-image: linear-gradient(to right, rgba(148,163,184,.11) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,.11) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
