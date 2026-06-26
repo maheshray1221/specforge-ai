@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import bcrypt from "bcryptjs";
-const slugify = require("slugify") as (
-  text: string,
-  options?: { lower?: boolean; strict?: boolean; replacement?: string },
-) => string;
+
 import { WorkspaceRole } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
 import { prisma } from "../../config/prisma.js";
 import { ApiError } from "../../utils/api-error.js";
+
 import type { LoginInput, RegisterInput } from "./auth.schema.js";
+
 import {
   createAccessToken,
   createRefreshToken,
@@ -22,12 +22,25 @@ const publicUserSelect = {
   createdAt: true,
 } as const;
 
+function createSlug(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "workspace";
+}
+
 async function createSession(user: { id: string; email: string }) {
   const accessToken = await createAccessToken({
     userId: user.id,
     email: user.email,
   });
+
   const refreshToken = createRefreshToken();
+
   await prisma.refreshToken.create({
     data: {
       userId: user.id,
@@ -35,79 +48,148 @@ async function createSession(user: { id: string; email: string }) {
       expiresAt: refreshExpiry(),
     },
   });
-  return { accessToken, refreshToken };
+
+  return {
+    accessToken,
+    refreshToken,
+  };
 }
 
 export async function register(input: RegisterInput) {
   const exists = await prisma.user.findUnique({
-    where: { email: input.email },
-    select: { id: true },
+    where: {
+      email: input.email,
+    },
+    select: {
+      id: true,
+    },
   });
-  if (exists)
+
+  if (exists) {
     throw new ApiError(409, "An account with this email already exists");
+  }
 
   const passwordHash = await bcrypt.hash(input.password, 12);
   const suffix = randomUUID().slice(0, 8);
-  const workspaceSlug = `${slugify(input.name, { lower: true, strict: true }) || "workspace"}-${suffix}`;
+  const workspaceSlug = `${createSlug(input.name)}-${suffix}`;
 
   const user = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
-      data: { name: input.name, email: input.email, passwordHash },
+      data: {
+        name: input.name,
+        email: input.email,
+        passwordHash,
+      },
       select: publicUserSelect,
     });
+
     const workspace = await tx.workspace.create({
       data: {
         name: `${input.name}'s Workspace`,
         slug: workspaceSlug,
         memberships: {
-          create: { userId: created.id, role: WorkspaceRole.OWNER },
+          create: {
+            userId: created.id,
+            role: WorkspaceRole.OWNER,
+          },
         },
       },
-      select: { id: true, name: true, slug: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+      },
     });
+
     return {
       ...created,
-      workspaces: [{ ...workspace, role: WorkspaceRole.OWNER }],
+      workspaces: [
+        {
+          ...workspace,
+          role: WorkspaceRole.OWNER,
+        },
+      ],
     };
   });
 
-  return { user, ...(await createSession(user)) };
+  const session = await createSession(user);
+
+  return {
+    user,
+    ...session,
+  };
 }
 
 export async function login(input: LoginInput) {
   const user = await prisma.user.findUnique({
-    where: { email: input.email },
-    select: { ...publicUserSelect, passwordHash: true },
+    where: {
+      email: input.email,
+    },
+    select: {
+      ...publicUserSelect,
+      passwordHash: true,
+    },
   });
-  if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
+
+  if (!user) {
     throw new ApiError(401, "Invalid email or password");
   }
+
+  const isPasswordValid = await bcrypt.compare(
+    input.password,
+    user.passwordHash,
+  );
+
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Invalid email or password");
+  }
+
   const safeUser = {
     id: user.id,
     name: user.name,
     email: user.email,
     createdAt: user.createdAt,
   };
-  return { user: safeUser, ...(await createSession(safeUser)) };
+
+  const session = await createSession(safeUser);
+
+  return {
+    user: safeUser,
+    ...session,
+  };
 }
 
 export async function refresh(rawToken: string) {
   const tokenHash = hashRefreshToken(rawToken);
+
   const session = await prisma.refreshToken.findUnique({
-    where: { tokenHash },
-    include: { user: { select: publicUserSelect } },
+    where: {
+      tokenHash,
+    },
+    include: {
+      user: {
+        select: publicUserSelect,
+      },
+    },
   });
+
   if (!session || session.revokedAt || session.expiresAt <= new Date()) {
     throw new ApiError(401, "Refresh session is invalid or expired");
   }
 
   const nextRefreshToken = createRefreshToken();
   const nextHash = hashRefreshToken(nextRefreshToken);
+
   await prisma.$transaction([
     prisma.refreshToken.update({
-      where: { id: session.id },
-      data: { revokedAt: new Date() },
+      where: {
+        id: session.id,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
     }),
+
     prisma.refreshToken.create({
       data: {
         userId: session.userId,
@@ -129,27 +211,47 @@ export async function refresh(rawToken: string) {
 
 export async function logout(rawToken: string | undefined): Promise<void> {
   if (!rawToken) return;
+
   await prisma.refreshToken.updateMany({
-    where: { tokenHash: hashRefreshToken(rawToken), revokedAt: null },
-    data: { revokedAt: new Date() },
+    where: {
+      tokenHash: hashRefreshToken(rawToken),
+      revokedAt: null,
+    },
+    data: {
+      revokedAt: new Date(),
+    },
   });
 }
 
 export async function getMe(userId: string) {
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: {
+      id: userId,
+    },
     select: {
       ...publicUserSelect,
       memberships: {
         select: {
           role: true,
-          workspace: { select: { id: true, name: true, slug: true } },
+          workspace: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: {
+          createdAt: "asc",
+        },
       },
     },
   });
-  if (!user) throw new ApiError(404, "User was not found");
+
+  if (!user) {
+    throw new ApiError(404, "User was not found");
+  }
+
   return {
     id: user.id,
     name: user.name,
