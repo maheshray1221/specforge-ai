@@ -4,7 +4,7 @@ import cors from "cors";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import pinoHttp from "pino-http";
+import { pinoHttp } from "pino-http";
 import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env.js";
 import { openApiDocument } from "./docs/openapi.js";

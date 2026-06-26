@@ -1,11 +1,19 @@
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
-import slugify from "slugify";
+const slugify = require("slugify") as (
+  text: string,
+  options?: { lower?: boolean; strict?: boolean; replacement?: string },
+) => string;
 import { WorkspaceRole } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { ApiError } from "../../utils/api-error.js";
 import type { LoginInput, RegisterInput } from "./auth.schema.js";
-import { createAccessToken, createRefreshToken, hashRefreshToken, refreshExpiry } from "./auth.token.js";
+import {
+  createAccessToken,
+  createRefreshToken,
+  hashRefreshToken,
+  refreshExpiry,
+} from "./auth.token.js";
 
 const publicUserSelect = {
   id: true,
@@ -15,17 +23,28 @@ const publicUserSelect = {
 } as const;
 
 async function createSession(user: { id: string; email: string }) {
-  const accessToken = await createAccessToken({ userId: user.id, email: user.email });
+  const accessToken = await createAccessToken({
+    userId: user.id,
+    email: user.email,
+  });
   const refreshToken = createRefreshToken();
   await prisma.refreshToken.create({
-    data: { userId: user.id, tokenHash: hashRefreshToken(refreshToken), expiresAt: refreshExpiry() },
+    data: {
+      userId: user.id,
+      tokenHash: hashRefreshToken(refreshToken),
+      expiresAt: refreshExpiry(),
+    },
   });
   return { accessToken, refreshToken };
 }
 
 export async function register(input: RegisterInput) {
-  const exists = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
-  if (exists) throw new ApiError(409, "An account with this email already exists");
+  const exists = await prisma.user.findUnique({
+    where: { email: input.email },
+    select: { id: true },
+  });
+  if (exists)
+    throw new ApiError(409, "An account with this email already exists");
 
   const passwordHash = await bcrypt.hash(input.password, 12);
   const suffix = randomUUID().slice(0, 8);
@@ -40,11 +59,16 @@ export async function register(input: RegisterInput) {
       data: {
         name: `${input.name}'s Workspace`,
         slug: workspaceSlug,
-        memberships: { create: { userId: created.id, role: WorkspaceRole.OWNER } },
+        memberships: {
+          create: { userId: created.id, role: WorkspaceRole.OWNER },
+        },
       },
       select: { id: true, name: true, slug: true },
     });
-    return { ...created, workspaces: [{ ...workspace, role: WorkspaceRole.OWNER }] };
+    return {
+      ...created,
+      workspaces: [{ ...workspace, role: WorkspaceRole.OWNER }],
+    };
   });
 
   return { user, ...(await createSession(user)) };
@@ -58,7 +82,12 @@ export async function login(input: LoginInput) {
   if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
     throw new ApiError(401, "Invalid email or password");
   }
-  const safeUser = { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
+  const safeUser = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    createdAt: user.createdAt,
+  };
   return { user: safeUser, ...(await createSession(safeUser)) };
 }
 
@@ -75,15 +104,25 @@ export async function refresh(rawToken: string) {
   const nextRefreshToken = createRefreshToken();
   const nextHash = hashRefreshToken(nextRefreshToken);
   await prisma.$transaction([
-    prisma.refreshToken.update({ where: { id: session.id }, data: { revokedAt: new Date() } }),
+    prisma.refreshToken.update({
+      where: { id: session.id },
+      data: { revokedAt: new Date() },
+    }),
     prisma.refreshToken.create({
-      data: { userId: session.userId, tokenHash: nextHash, expiresAt: refreshExpiry() },
+      data: {
+        userId: session.userId,
+        tokenHash: nextHash,
+        expiresAt: refreshExpiry(),
+      },
     }),
   ]);
 
   return {
     user: session.user,
-    accessToken: await createAccessToken({ userId: session.user.id, email: session.user.email }),
+    accessToken: await createAccessToken({
+      userId: session.user.id,
+      email: session.user.email,
+    }),
     refreshToken: nextRefreshToken,
   };
 }
@@ -102,7 +141,10 @@ export async function getMe(userId: string) {
     select: {
       ...publicUserSelect,
       memberships: {
-        select: { role: true, workspace: { select: { id: true, name: true, slug: true } } },
+        select: {
+          role: true,
+          workspace: { select: { id: true, name: true, slug: true } },
+        },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -113,6 +155,9 @@ export async function getMe(userId: string) {
     name: user.name,
     email: user.email,
     createdAt: user.createdAt,
-    workspaces: user.memberships.map(({ role, workspace }) => ({ ...workspace, role })),
+    workspaces: user.memberships.map(({ role, workspace }) => ({
+      ...workspace,
+      role,
+    })),
   };
 }
