@@ -6,13 +6,25 @@ import * as authService from "./auth.service.js";
 export const register: RequestHandler = async (req, res) => {
   const result = await authService.register(req.body);
   setAuthCookies(res, result.accessToken, result.refreshToken);
-  res.status(201).json({ success: true, data: { user: result.user } });
+  res.status(201).json({
+    success: true,
+    data: {
+      user: result.user,
+      accessToken: result.accessToken,
+    },
+  });
 };
 
 export const login: RequestHandler = async (req, res) => {
   const result = await authService.login(req.body);
   setAuthCookies(res, result.accessToken, result.refreshToken);
-  res.json({ success: true, data: { user: result.user } });
+  res.json({
+    success: true,
+    data: {
+      user: result.user,
+      accessToken: result.accessToken,
+    },
+  });
 };
 
 export const refresh: RequestHandler = async (req, res) => {
@@ -20,7 +32,13 @@ export const refresh: RequestHandler = async (req, res) => {
   if (!rawToken) throw new ApiError(401, "Refresh token is missing");
   const result = await authService.refresh(rawToken);
   setAuthCookies(res, result.accessToken, result.refreshToken);
-  res.json({ success: true, data: { user: result.user } });
+  res.json({
+    success: true,
+    data: {
+      user: result.user,
+      accessToken: result.accessToken,
+    },
+  });
 };
 
 export const logout: RequestHandler = async (req, res) => {

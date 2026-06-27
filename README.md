@@ -137,7 +137,7 @@ GROQ_MODEL=openai/gpt-oss-120b
 COOKIE_SECURE=false
 ```
 
-For production, use HTTPS, set `COOKIE_SECURE=true`, use a managed PostgreSQL URL, and set `FRONTEND_URL` to the deployed frontend origin.
+For production, set `NODE_ENV=production`, use HTTPS, use a managed PostgreSQL URL, and set `FRONTEND_URL` to the deployed frontend origin. Auth cookies are configured as `Secure` + `SameSite=None` automatically in production and `SameSite=Lax` locally.
 
 ## API overview
 

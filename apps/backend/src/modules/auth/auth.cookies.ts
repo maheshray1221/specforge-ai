@@ -1,13 +1,13 @@
 import type { CookieOptions, Response } from "express";
-import { env } from "../../config/env.js";
+import { env, isProduction } from "../../config/env.js";
 
 export const ACCESS_COOKIE = "specforge_access";
 export const REFRESH_COOKIE = "specforge_refresh";
 
 const baseOptions: CookieOptions = {
   httpOnly: true,
-  secure: env.COOKIE_SECURE,
-  sameSite: env.NODE_ENV === "production" ? "none" : "lax",
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
   path: "/",
 };
 
