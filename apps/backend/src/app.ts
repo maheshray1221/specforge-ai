@@ -22,7 +22,16 @@ app.use((req, res, next) => {
 });
 app.use(pinoHttp({ logger }));
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
+const allowedOrigins = ["http://localhost:3000", env.FRONTEND_URL].filter(
+  Boolean,
+); // undefined/empty values hata dega
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  }),
+);
 app.use(
   rateLimit({
     windowMs: 60_000,
