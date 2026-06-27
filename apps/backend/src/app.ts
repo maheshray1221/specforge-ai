@@ -23,24 +23,17 @@ app.use((req, res, next) => {
 app.use(pinoHttp({ logger }));
 app.use(helmet({ contentSecurityPolicy: false }));
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://specforge-ai-frontend.vercel.app",
-];
-
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: env.FRONTEND_URL, // sirf production Vercel URL
     credentials: true,
-  }),
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
 );
+
+
+
 app.use(
   rateLimit({
     windowMs: 60_000,
