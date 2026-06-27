@@ -13,6 +13,11 @@ interface ApiEnvelope<T> {
   };
 }
 
+export interface ApiValidationDetail {
+  path: string;
+  message: string;
+}
+
 export class ApiClientError extends Error {
   constructor(
     message: string,
@@ -22,6 +27,34 @@ export class ApiClientError extends Error {
     super(message);
     this.name = "ApiClientError";
   }
+}
+
+export function getValidationDetails(
+  error: unknown,
+): ApiValidationDetail[] {
+  if (!(error instanceof ApiClientError)) {
+    return [];
+  }
+
+  if (!Array.isArray(error.details)) {
+    return [];
+  }
+
+  return error.details.flatMap((detail) => {
+    if (
+      typeof detail === "object" &&
+      detail !== null &&
+      typeof (detail as Record<string, unknown>).path === "string" &&
+      typeof (detail as Record<string, unknown>).message === "string"
+    ) {
+      return [{
+        path: (detail as Record<string, string>).path,
+        message: (detail as Record<string, string>).message,
+      }];
+    }
+
+    return [];
+  });
 }
 
 export function setAccessToken(token: string | null): void {

@@ -20,11 +20,13 @@ export function ProjectsDashboard() {
 
   useEffect(() => {
     if (!workspace) return;
-    setLoading(true);
-    api<{ projects: Project[] }>(`/projects?workspaceId=${workspace.id}`)
-      .then((data) => setProjects(data.projects))
-      .catch((reason) => setError(reason instanceof ApiClientError ? reason.message : "Projects could not be loaded"))
-      .finally(() => setLoading(false));
+    queueMicrotask(() => {
+      setLoading(true);
+      api<{ projects: Project[] }>(`/projects?workspaceId=${workspace.id}`)
+        .then((data) => setProjects(data.projects))
+        .catch((reason) => setError(reason instanceof ApiClientError ? reason.message : "Projects could not be loaded"))
+        .finally(() => setLoading(false));
+    });
   }, [workspace]);
 
   const filtered = useMemo(() => projects.filter((project) => `${project.name} ${project.key}`.toLowerCase().includes(search.toLowerCase())), [projects, search]);

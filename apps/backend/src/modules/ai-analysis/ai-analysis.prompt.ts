@@ -1,6 +1,6 @@
 const normalizePromptText = (value: string): string =>
   value
-    .replace(/\u0000/g, "")
+    .replaceAll("\0", "")
     .replace(/\r\n/g, "\n")
     .trim();
 

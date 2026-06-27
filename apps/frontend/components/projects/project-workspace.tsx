@@ -88,16 +88,24 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }, [projectId]);
 
-  useEffect(() => { void loadAll(); }, [loadAll]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadAll();
+    });
+  }, [loadAll]);
 
   useEffect(() => {
     if (!selectedRequirementId) {
-      setAnalysis(null);
+      queueMicrotask(() => {
+        setAnalysis(null);
+      });
       return;
     }
-    api<{ analyses: AIAnalysis[] }>(`/requirements/${selectedRequirementId}/analyses`)
-      .then((data) => setAnalysis(data.analyses.find((item) => item.status === "COMPLETED") ?? data.analyses[0] ?? null))
-      .catch(() => setAnalysis(null));
+    queueMicrotask(() => {
+      api<{ analyses: AIAnalysis[] }>(`/requirements/${selectedRequirementId}/analyses`)
+        .then((data) => setAnalysis(data.analyses.find((item) => item.status === "COMPLETED") ?? data.analyses[0] ?? null))
+        .catch(() => setAnalysis(null));
+    });
   }, [selectedRequirementId]);
 
   const selectedRequirement = requirements.find((item) => item.id === selectedRequirementId) ?? null;

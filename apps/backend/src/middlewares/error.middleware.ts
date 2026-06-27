@@ -6,6 +6,7 @@ import { logger } from "../lib/logger.js";
 import { ApiError } from "../utils/api-error.js";
 
 export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
+  void _next;
   let statusCode = 500;
   let message = "Internal server error";
   let details: unknown;

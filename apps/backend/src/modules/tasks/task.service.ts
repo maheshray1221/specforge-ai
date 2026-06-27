@@ -1,4 +1,5 @@
-import { AnalysisStatus, Prisma, ProjectStatus, RequirementStatus, TaskStatus } from "@prisma/client";
+import { AnalysisStatus, ProjectStatus, RequirementStatus, TaskStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { generateStructuredOutput } from "../../lib/ai/groq.client.js";
 import { ApiError } from "../../utils/api-error.js";

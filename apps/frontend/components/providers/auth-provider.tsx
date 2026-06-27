@@ -30,7 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { void refreshUser(); }, [refreshUser]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      void refreshUser();
+    });
+  }, [refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await api<{ user: User }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
