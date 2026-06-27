@@ -22,13 +22,19 @@ app.use((req, res, next) => {
 });
 app.use(pinoHttp({ logger }));
 app.use(helmet({ contentSecurityPolicy: false }));
-const allowedOrigins = ["http://localhost:3000", env.FRONTEND_URL].filter(
-  Boolean,
-); // undefined/empty values hata dega
+
+const allowedOrigins = ["http://localhost:3000", env.FRONTEND_URL];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   }),
 );
