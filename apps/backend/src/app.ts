@@ -23,7 +23,10 @@ app.use((req, res, next) => {
 app.use(pinoHttp({ logger }));
 app.use(helmet({ contentSecurityPolicy: false }));
 
-const allowedOrigins = ["http://localhost:3000", env.FRONTEND_URL];
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://specforge-ai-frontend.vercel.app",
+];
 
 app.use(
   cors({
