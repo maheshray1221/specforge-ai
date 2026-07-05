@@ -124,10 +124,14 @@ export async function listProjectTasks(userId: string, projectId: string, filter
 }
 
 export async function updateTask(userId: string, taskId: string, input: UpdateTaskInput) {
-  const task = await prisma.task.findUnique({ where: { id: taskId }, select: { projectId: true } });
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { projectId: true, sprint: { select: { status: true } } },
+  });
   if (!task) throw new ApiError(404, "Task was not found");
   const access = await getProjectAccess(userId, task.projectId);
   assertRole(access.role, WRITE_ROLES, "Viewer members cannot update tasks");
+  if (task.sprint?.status === "COMPLETED") throw new ApiError(409, "Tasks in completed sprints are read-only");
   if (input.sprintId) {
     const sprint = await prisma.sprint.findFirst({ where: { id: input.sprintId, projectId: task.projectId }, select: { id: true } });
     if (!sprint) throw new ApiError(422, "Sprint must belong to the same project");
