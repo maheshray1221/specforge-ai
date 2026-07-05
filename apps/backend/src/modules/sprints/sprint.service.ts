@@ -50,6 +50,18 @@ export async function updateSprint(userId: string, sprintId: string, input: Upda
   const access = await getProjectAccess(userId, sprint.projectId);
   assertRole(access.role, WRITE_ROLES, "Viewer members cannot update sprints");
 
+  if (sprint.status === SprintStatus.COMPLETED) {
+    throw new ApiError(409, "Completed sprints are read-only");
+  }
+  if (input.status && input.status !== sprint.status) {
+    const validTransition =
+      (sprint.status === SprintStatus.PLANNED && input.status === SprintStatus.ACTIVE) ||
+      (sprint.status === SprintStatus.ACTIVE && input.status === SprintStatus.COMPLETED);
+    if (!validTransition) {
+      throw new ApiError(409, `Sprint cannot move from ${sprint.status} to ${input.status}`);
+    }
+  }
+
   const startDate = input.startDate !== undefined ? toDate(input.startDate) : sprint.startDate;
   const endDate = input.endDate !== undefined ? toDate(input.endDate) : sprint.endDate;
   if (startDate && endDate && startDate > endDate) throw new ApiError(422, "End date must be after start date");
