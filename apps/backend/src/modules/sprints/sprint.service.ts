@@ -107,6 +107,7 @@ export async function addTask(userId: string, sprintId: string, taskId: string) 
 export async function removeTask(userId: string, sprintId: string, taskId: string) {
   const sprint = await prisma.sprint.findUnique({ where: { id: sprintId }, select: { projectId: true, status: true } });
   if (!sprint) throw new ApiError(404, "Sprint was not found");
+  if (sprint.status === SprintStatus.COMPLETED) throw new ApiError(409, "Completed sprints cannot be changed");
   const access = await getProjectAccess(userId, sprint.projectId);
   assertRole(access.role, WRITE_ROLES, "Viewer members cannot plan sprints");
   await prisma.task.updateMany({ where: { id: taskId, sprintId, projectId: sprint.projectId }, data: { sprintId: null, status: TaskStatus.BACKLOG } });
