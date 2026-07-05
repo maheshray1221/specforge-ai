@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CreateRequirementDialog } from "@/components/requirements/create-requirement-dialog";
 import { EditRequirementDialog } from "@/components/requirements/edit-requirement-dialog";
 import { CreateSprintDialog } from "@/components/sprints/create-sprint-dialog";
+import { EditSprintDialog } from "@/components/sprints/edit-sprint-dialog";
 import { EditTaskDialog } from "@/components/tasks/edit-task-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -224,7 +225,31 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
         <TabsContent value="sprints">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold">Sprint planning</h2><p className="mt-1 text-sm text-slate-500">Organize backlog tasks into focused delivery cycles.</p></div><CreateSprintDialog projectId={projectId} onCreated={(sprint) => setSprints((current) => [sprint, ...current])} /></div>
-          {sprints.length === 0 ? <EmptyState icon={Rocket} title="No sprints planned" text="Create a sprint, set a capacity and assign generated tasks from the task board." /> : <div className="grid gap-4 lg:grid-cols-2">{sprints.map((sprint) => { const totalPoints = sprint.tasks.reduce((sum, task) => sum + (task.storyPoints ?? 0), 0); const done = sprint.tasks.filter((task) => task.status === "DONE").length; return <Card key={sprint.id}><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>{sprint.name}</CardTitle><CardDescription>{sprint.goal || "No sprint goal."}</CardDescription></div><Badge className={sprint.status === "ACTIVE" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ""}>{sprint.status}</Badge></div></CardHeader><CardContent><div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center"><div><p className="text-lg font-bold">{sprint.tasks.length}</p><p className="text-[11px] text-slate-500">Tasks</p></div><div><p className="text-lg font-bold">{totalPoints}</p><p className="text-[11px] text-slate-500">Points</p></div><div><p className="text-lg font-bold">{done}</p><p className="text-[11px] text-slate-500">Done</p></div></div><div className="mt-4 space-y-2">{sprint.tasks.slice(0, 6).map((task) => <div key={task.id} className="flex items-center gap-3 rounded-lg border border-slate-100 px-3 py-2"><CheckCircle2 className={`h-4 w-4 ${task.status === "DONE" ? "text-emerald-500" : "text-slate-300"}`} /><p className="min-w-0 flex-1 truncate text-sm">{task.title}</p><span className="text-xs text-slate-500">{task.storyPoints ?? "—"}p</span></div>)}{sprint.tasks.length === 0 && <p className="py-4 text-center text-sm text-slate-500">Assign tasks from the task board.</p>}</div></CardContent></Card>; })}</div>}
+          {sprints.length === 0 ? <EmptyState icon={Rocket} title="No sprints planned" text="Create a sprint, set a capacity and assign generated tasks from the task board." /> : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {sprints.map((sprint) => {
+                const totalPoints = sprint.tasks.reduce((sum, task) => sum + (task.storyPoints ?? 0), 0);
+                const done = sprint.tasks.filter((task) => task.status === "DONE").length;
+                const capacityPercent = sprint.capacityPoints ? Math.min(100, Math.round((totalPoints / sprint.capacityPoints) * 100)) : 0;
+                return (
+                  <Card key={sprint.id}>
+                    <CardHeader>
+                      <div className="flex items-start justify-between gap-3">
+                        <div><CardTitle>{sprint.name}</CardTitle><CardDescription>{sprint.goal || "No sprint goal."}</CardDescription></div>
+                        <div className="flex items-center gap-2"><Badge className={sprint.status === "ACTIVE" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : ""}>{sprint.status}</Badge><EditSprintDialog sprint={sprint} onUpdated={(updated) => setSprints((current) => current.map((item) => item.id === updated.id ? updated : item))} /></div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center"><div><p className="text-lg font-bold">{sprint.tasks.length}</p><p className="text-[11px] text-slate-500">Tasks</p></div><div><p className="text-lg font-bold">{totalPoints}</p><p className="text-[11px] text-slate-500">Points</p></div><div><p className="text-lg font-bold">{done}</p><p className="text-[11px] text-slate-500">Done</p></div></div>
+                      {sprint.capacityPoints ? <div className="mt-4"><div className="flex justify-between text-xs text-slate-500"><span>Capacity</span><span>{totalPoints} / {sprint.capacityPoints} points</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${capacityPercent}%` }} /></div></div> : null}
+                      {(sprint.startDate || sprint.endDate) ? <p className="mt-3 text-xs text-slate-500">{sprint.startDate ? new Date(sprint.startDate).toLocaleDateString() : "No start date"} – {sprint.endDate ? new Date(sprint.endDate).toLocaleDateString() : "No end date"}</p> : null}
+                      <div className="mt-4 space-y-2">{sprint.tasks.slice(0, 6).map((task) => <div key={task.id} className="flex items-center gap-3 rounded-lg border border-slate-100 px-3 py-2"><CheckCircle2 className={`h-4 w-4 ${task.status === "DONE" ? "text-emerald-500" : "text-slate-300"}`} /><p className="min-w-0 flex-1 truncate text-sm">{task.title}</p><span className="text-xs text-slate-500">{task.storyPoints ?? "—"}p</span></div>)}{sprint.tasks.length === 0 && <p className="py-4 text-center text-sm text-slate-500">Assign tasks from the task board.</p>}</div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
