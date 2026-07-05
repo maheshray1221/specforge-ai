@@ -1,4 +1,4 @@
-import { ProjectStatus } from "@prisma/client";
+import { ProjectStatus, RequirementStatus } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { ApiError } from "../../utils/api-error.js";
 import { WRITE_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
@@ -67,11 +67,18 @@ export async function getRequirement(userId: string, requirementId: string) {
 export async function updateRequirement(userId: string, requirementId: string, input: UpdateRequirementInput) {
   const current = await prisma.requirement.findFirst({
     where: { id: requirementId, project: { workspace: { memberships: { some: { userId } } } } },
-    select: { id: true, projectId: true, currentContent: true, versions: { orderBy: { versionNumber: "desc" }, take: 1, select: { versionNumber: true } } },
+    select: { id: true, projectId: true, currentContent: true, status: true, versions: { orderBy: { versionNumber: "desc" }, take: 1, select: { versionNumber: true } } },
   });
   if (!current) throw new ApiError(404, "Requirement was not found");
   const access = await getProjectAccess(userId, current.projectId);
   assertRole(access.role, WRITE_ROLES, "Viewer members cannot update requirements");
+  if (
+    current.status === RequirementStatus.NEEDS_CLARIFICATION &&
+    input.status === RequirementStatus.READY &&
+    (input.content === undefined || input.content === current.currentContent)
+  ) {
+    throw new ApiError(422, "Update the requirement with the missing decisions before marking it ready");
+  }
 
   return prisma.$transaction(async (tx) => {
     await tx.requirement.update({

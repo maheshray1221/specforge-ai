@@ -3,6 +3,7 @@ const API_URL =
   "http://localhost:5000/api/v1";
 
 let accessToken: string | null = null;
+let refreshRequest: Promise<boolean> | null = null;
 
 interface ApiEnvelope<T> {
   success?: boolean;
@@ -123,7 +124,7 @@ function createHeaders(init: RequestInit): Headers {
   return headers;
 }
 
-async function refreshAccessToken(): Promise<boolean> {
+async function performRefresh(): Promise<boolean> {
   try {
     const response = await fetch(
       `${API_URL}/auth/refresh`,
@@ -141,9 +142,7 @@ async function refreshAccessToken(): Promise<boolean> {
     const payload = (await response
       .json()
       .catch(() => null)) as ApiEnvelope<unknown> | null;
-
-    const nextAccessToken =
-      extractAccessToken(payload?.data);
+    const nextAccessToken = extractAccessToken(payload?.data);
 
     if (!nextAccessToken) {
       clearAccessToken();
@@ -151,12 +150,21 @@ async function refreshAccessToken(): Promise<boolean> {
     }
 
     setAccessToken(nextAccessToken);
-
     return true;
   } catch {
     clearAccessToken();
     return false;
   }
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  if (!refreshRequest) {
+    refreshRequest = performRefresh().finally(() => {
+      refreshRequest = null;
+    });
+  }
+
+  return refreshRequest;
 }
 
 export async function api<T>(

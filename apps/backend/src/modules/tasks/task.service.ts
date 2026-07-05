@@ -78,7 +78,9 @@ export async function generateTasks(userId: string, analysisId: string, regenera
     system: TASK_SYSTEM_PROMPT,
     prompt: buildTaskPrompt({ projectName: analysis.requirement.project.name, requirementTitle: analysis.requirement.title, requirementContent: analysis.requirementVersion.content, analysis: stored.data }),
     parse: (value) => taskGeneratorOutputSchema.parse(value),
-    maxOutputTokens: 16000,
+    // Keep the combined prompt and completion below Groq's 8K TPM limit
+    // on the default on-demand tier.
+    maxOutputTokens: 5000,
   });
 
   await prisma.$transaction(async (tx) => {
