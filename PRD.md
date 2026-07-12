@@ -1,8 +1,8 @@
 # SpecForge AI — Product Requirements Document
 
-**Document status:** Implemented MVP baseline + post-MVP roadmap
-**Version:** 1.1
-**Last updated:** July 5, 2026
+**Document status:** Implemented MVP baseline + post-MVP scale roadmap, excluding billing
+**Version:** 1.2
+**Last updated:** July 12, 2026
 **Product type:** B2B SaaS, AI-assisted software planning
 **Current stage:** Implemented MVP; production deployment readiness is pending verification
 
@@ -309,7 +309,7 @@ Needs to scope client work quickly and create a credible delivery plan across se
 
 ### Out of scope for MVP
 
-- Billing, subscriptions, and usage quotas.
+- Billing and paid subscriptions.
 - Social login, SSO, SCIM, and enterprise identity management.
 - In-app invitations and member administration UI.
 - Real-time multi-user editing, comments, mentions, and notifications.
@@ -346,7 +346,7 @@ The product should record privacy-safe events for:
 - `sprint_capacity_rejected`
 - `sprint_completed`
 - `workspace_invitation_sent`
-- `subscription_changed`
+- `quota_limit_reached`
 
 Events should include stable entity IDs, timestamps, duration where relevant, and model/provider metadata, but not requirement content or generated text.
 
@@ -413,7 +413,7 @@ Roadmap dates are planning targets, not external commitments. Work is reprioriti
 | Days 16–30 | Tests, security, and monitoring | CI gates, authorization coverage, staging, error monitoring, backups, and restore verification |
 | Days 31–45 | AI reliability | Background jobs, bounded retries, schema repair, prompt versioning, and usage telemetry |
 | Days 46–60 | Workflow and collaboration | Structured clarifications, approval, invitations, assignments, comments, activity, and deeper task/sprint controls |
-| Days 61–75 | Integrations and commercial foundation | PDF/CSV/JSON export, prioritized issue export, metering, quotas, product analytics, and subscription foundation |
+| Days 61–75 | Integrations and usage controls | PDF/CSV/JSON export, prioritized issue export, usage metering, backend quotas, and product analytics |
 | Days 76–90 | Private beta and launch readiness | Onboarding, accessibility, performance, policies, beta fixes, and public-launch checklist |
 
 ### 15.3 Immediate next seven days
@@ -441,21 +441,50 @@ Roadmap dates are planning targets, not external commitments. Work is reprioriti
 - Prioritize GitHub Issues or Jira/Linear export based on beta demand, followed by Slack/Microsoft Teams notifications and webhooks.
 - Add file and document ingestion, reusable project templates, and organization-specific planning standards only after the core flow is reliable.
 
-### 15.6 Usage, packaging, and billing
+### 15.6 Usage controls without billing
 
-- Meter AI analyses, task generation, exports, team seats, tokens, and estimated provider cost before charging users.
-- Enforce quotas on the backend and show users current usage and recovery options.
-- Illustrative packaging—not a committed price or entitlement model—is:
+- Meter AI analyses, task generation, exports, team seats, tokens, and estimated provider cost for reliability, quota enforcement, and capacity planning.
+- Enforce quotas on the backend and show users current usage, remaining limits, and recovery options.
+- Billing, paid subscriptions, Stripe checkout, and paid plan packaging are intentionally excluded from this roadmap until explicitly reprioritized.
+- Usage controls must work independently of any future billing system.
 
-| Plan | Illustrative positioning |
-|---|---|
-| Free | One workspace, two projects, and limited monthly AI analyses |
-| Pro | More projects and AI usage, version history, and PDF export |
-| Team | Multiple members, administration, integrations, audit history, and higher limits |
+### 15.7 Scale-readiness roadmap
 
-- If subscriptions are introduced, Stripe webhook-confirmed state is authoritative. Webhook processing is signed and idempotent and handles upgrades, downgrades, cancellation, payment failure, and grace periods.
+These features are required before broad public launch and should be implemented after the approval-gated core flow remains stable:
 
-### 15.7 Private beta and public launch
+1. **Background AI jobs**
+   - Move requirement analysis and task generation from synchronous HTTP requests into queued jobs.
+   - Track job states: `QUEUED`, `RUNNING`, `RETRYING`, `COMPLETED`, `FAILED`, and `CANCELLED`.
+   - Persist attempts, duration, safe error category, model, prompt/schema version, token usage, and final output references.
+   - Make job submission idempotent so refreshes and duplicate clicks do not create duplicate AI work.
+
+2. **Pagination, filtering, and performance**
+   - Add bounded pagination to projects, requirements, analyses, tasks, and sprints.
+   - Add indexed filters for common list views: status, priority, type, sprint, assignee, created date, and updated date.
+   - Avoid unbounded response payloads for large workspaces.
+
+3. **Monitoring and operations**
+   - Add frontend and backend exception monitoring, uptime checks, and alerting.
+   - Track API latency, 5xx rate, auth failures, database connectivity, AI provider failures, queue depth, and quota exhaustion.
+   - Add operational runbooks for failed deployments, stuck jobs, provider outages, and database restore.
+
+4. **Backups and staging**
+   - Configure managed backups and document a restore drill.
+   - Add a staging environment where migrations, CI, smoke tests, and core flows run before production changes.
+   - Release only when build, lint, typecheck, migration deploy, and E2E checks pass.
+
+5. **Exports and integrations**
+   - Export planning packages as PDF, task and sprint data as CSV, and analysis/task data as JSON.
+   - Add GitHub Issues export first, then evaluate Jira/Linear and Slack/Teams based on beta feedback.
+
+6. **Collaboration**
+   - Add workspace invitations, project membership administration, task assignees, comments, mentions, activity feed, and notifications.
+   - Preserve backend role enforcement for every collaboration action.
+
+7. **Task depth**
+   - Add due dates, dependencies, blocked state, subtasks, audit history, list view, filters, and bulk operations.
+
+### 15.8 Private beta and public launch
 
 - Recruit 10–20 freelancers, small agencies, project managers, developers, and startup founders using real planning scenarios that comply with the data policy.
 - Observe where users abandon the flow, which questions help, what generated content they edit, whether estimates are credible, and which export saves meaningful time.
@@ -474,7 +503,7 @@ Roadmap dates are planning targets, not external commitments. Work is reprioriti
 1. Is the commercial buyer an agency, an internal product team, or both?
 2. What client data classifications may be submitted to the AI provider?
 3. Which generated artifacts can users edit directly, and which edits must survive regeneration?
-4. What are the workspace-level AI usage limits and primary billing unit?
+4. What are the workspace-level AI usage limits and quota reset policy?
 5. Is project archiving sufficient, or is permanent deletion required for compliance?
 6. Based on beta demand, should GitHub Issues, Jira, or Linear be the first task integration?
-7. What RPO and RTO are appropriate for the first paid plan?
+7. What RPO and RTO are appropriate for the first public beta environment?
