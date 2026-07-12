@@ -17,12 +17,19 @@ export const listRequirementsSchema = z.object({
 
 export const requirementIdSchema = z.object({ params: z.object({ requirementId: z.string().uuid() }) });
 
+const clarificationAnswerSchema = z.object({
+  question: z.string().trim().min(1).max(1000),
+  answer: z.string().trim().min(1).max(4000),
+  required: z.boolean().default(true),
+});
+
 export const updateRequirementSchema = z.object({
   params: z.object({ requirementId: z.string().uuid() }),
   body: z.object({
     title: z.string().trim().min(3).max(140).optional(),
     content: z.string().trim().min(20).max(60000).optional(),
     status: z.nativeEnum(RequirementStatus).optional(),
+    clarificationAnswers: z.array(clarificationAnswerSchema).max(50).optional(),
   }).refine((value) => Object.keys(value).length > 0, "At least one field is required"),
 });
 

@@ -39,7 +39,8 @@ export interface Requirement {
   projectId: string;
   title: string;
   currentContent: string;
-  status: "DRAFT" | "READY" | "NEEDS_CLARIFICATION";
+  status: "DRAFT" | "READY" | "NEEDS_CLARIFICATION" | "APPROVED";
+  clarificationAnswers: Array<{ question: string; answer: string; required: boolean; resolvedAt: string; resolvedBy: string }> | null;
   createdAt: string;
   updatedAt: string;
   versions: RequirementVersion[];

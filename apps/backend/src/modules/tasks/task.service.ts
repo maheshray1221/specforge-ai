@@ -53,7 +53,7 @@ export async function generateTasks(userId: string, analysisId: string, regenera
   assertRole(access.role, WRITE_ROLES, "Viewer members cannot generate tasks");
   if (analysis.status !== AnalysisStatus.COMPLETED) throw new ApiError(409, "Tasks require a completed analysis");
   if (analysis.requirement.project.status === ProjectStatus.ARCHIVED) throw new ApiError(409, "Archived projects cannot be changed");
-  if (analysis.requirement.status === RequirementStatus.NEEDS_CLARIFICATION) throw new ApiError(409, "Resolve clarification questions and mark the requirement READY first");
+  if (analysis.requirement.status !== RequirementStatus.APPROVED) throw new ApiError(409, "Approve the requirement before generating tasks");
   if (analysis.requirement.versions[0]?.id !== analysis.requirementVersion.id) throw new ApiError(409, "Analysis is not based on the latest requirement version");
 
   const stored = aiAnalysisOutputSchema.safeParse({

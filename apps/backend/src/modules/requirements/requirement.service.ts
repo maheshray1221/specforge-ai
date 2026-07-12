@@ -10,6 +10,7 @@ const select = {
   title: true,
   currentContent: true,
   status: true,
+  clarificationAnswers: true,
   createdAt: true,
   updatedAt: true,
   versions: {
@@ -23,6 +24,61 @@ const select = {
     select: { id: true, status: true, provider: true, model: true, createdAt: true },
   },
 } as const;
+
+function normalizeClarificationAnswers(input: UpdateRequirementInput["clarificationAnswers"], userId: string) {
+  if (!input) return undefined;
+  const resolvedAt = new Date().toISOString();
+
+  return input.map((item) => ({
+    question: item.question,
+    answer: item.answer,
+    required: item.required,
+    resolvedAt,
+    resolvedBy: userId,
+  }));
+}
+
+function getAnsweredQuestions(value: unknown): Set<string> {
+  if (!Array.isArray(value)) return new Set();
+
+  return new Set(value.flatMap((item) => {
+    const record = item as Record<string, unknown>;
+    const question = record.question;
+    const answer = record.answer;
+
+    if (
+      typeof item === "object" &&
+      item !== null &&
+      typeof question === "string" &&
+      typeof answer === "string" &&
+      answer.trim().length > 0
+    ) {
+      return [question.trim()];
+    }
+
+    return [];
+  }));
+}
+
+function getRequiredQuestions(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    const record = item as Record<string, unknown>;
+    const question = record.question;
+
+    if (
+      typeof item === "object" &&
+      item !== null &&
+      typeof question === "string" &&
+      record.required === true
+    ) {
+      return [question.trim()];
+    }
+
+    return [];
+  });
+}
 
 export async function createRequirement(userId: string, projectId: string, input: CreateRequirementInput) {
   const access = await getProjectAccess(userId, projectId);
@@ -67,17 +123,48 @@ export async function getRequirement(userId: string, requirementId: string) {
 export async function updateRequirement(userId: string, requirementId: string, input: UpdateRequirementInput) {
   const current = await prisma.requirement.findFirst({
     where: { id: requirementId, project: { workspace: { memberships: { some: { userId } } } } },
-    select: { id: true, projectId: true, currentContent: true, status: true, versions: { orderBy: { versionNumber: "desc" }, take: 1, select: { versionNumber: true } } },
+    select: {
+      id: true,
+      projectId: true,
+      currentContent: true,
+      status: true,
+      clarificationAnswers: true,
+      analyses: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { clarificationQuestions: true },
+      },
+      versions: { orderBy: { versionNumber: "desc" }, take: 1, select: { versionNumber: true } },
+    },
   });
   if (!current) throw new ApiError(404, "Requirement was not found");
   const access = await getProjectAccess(userId, current.projectId);
   assertRole(access.role, WRITE_ROLES, "Viewer members cannot update requirements");
+
+  const clarificationAnswers = normalizeClarificationAnswers(input.clarificationAnswers, userId);
+  const nextClarificationAnswers = clarificationAnswers ?? current.clarificationAnswers;
+
   if (
     current.status === RequirementStatus.NEEDS_CLARIFICATION &&
     input.status === RequirementStatus.READY &&
     (input.content === undefined || input.content === current.currentContent)
   ) {
-    throw new ApiError(422, "Update the requirement with the missing decisions before marking it ready");
+    const requiredQuestions = getRequiredQuestions(current.analyses[0]?.clarificationQuestions);
+    const answeredQuestions = getAnsweredQuestions(nextClarificationAnswers);
+    const missingRequiredQuestions = requiredQuestions.filter((question) => !answeredQuestions.has(question));
+
+    if (missingRequiredQuestions.length > 0) {
+      throw new ApiError(422, "Answer all required clarification questions before marking the requirement ready", missingRequiredQuestions);
+    }
+  }
+
+  if (input.status === RequirementStatus.APPROVED) {
+    if (
+      current.status !== RequirementStatus.READY &&
+      current.status !== RequirementStatus.APPROVED
+    ) {
+      throw new ApiError(422, "Only ready requirements can be approved");
+    }
   }
 
   return prisma.$transaction(async (tx) => {
@@ -87,6 +174,7 @@ export async function updateRequirement(userId: string, requirementId: string, i
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.content !== undefined ? { currentContent: input.content } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(clarificationAnswers !== undefined ? { clarificationAnswers } : {}),
       },
     });
     if (input.content !== undefined && input.content !== current.currentContent) {

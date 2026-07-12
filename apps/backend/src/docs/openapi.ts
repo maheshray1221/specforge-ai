@@ -17,7 +17,7 @@ export const openApiDocument = {
       Login: { type: "object", required: ["email", "password"], properties: { email: { type: "string", format: "email" }, password: { type: "string", format: "password" } } },
       Register: { type: "object", required: ["name", "email", "password"], properties: { name: { type: "string" }, email: { type: "string", format: "email" }, password: { type: "string", format: "password" } } },
       ProjectInput: { type: "object", required: ["workspaceId", "name", "key"], properties: { workspaceId: { type: "string", format: "uuid" }, name: { type: "string" }, key: { type: "string" }, description: { type: "string" } } },
-      RequirementInput: { type: "object", required: ["title", "content"], properties: { title: { type: "string" }, content: { type: "string" }, status: { type: "string", enum: ["DRAFT", "READY", "NEEDS_CLARIFICATION"] } } },
+      RequirementInput: { type: "object", required: ["title", "content"], properties: { title: { type: "string" }, content: { type: "string" }, status: { type: "string", enum: ["DRAFT", "READY", "NEEDS_CLARIFICATION", "APPROVED"] } } },
     },
   },
   paths: {

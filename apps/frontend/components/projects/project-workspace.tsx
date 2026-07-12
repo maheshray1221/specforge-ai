@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError } from "@/lib/api";
 import type { AIAnalysis, Project, Requirement, Sprint, Task, TaskStatus } from "@/lib/types";
 
@@ -111,6 +112,58 @@ function TelemetryGrid({ analysis }: { analysis: AIAnalysis }) {
             )}
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ClarificationAnswerCard({
+  analysis,
+  requirement,
+  loading,
+  onSubmit,
+}: {
+  analysis: AIAnalysis;
+  requirement: Requirement;
+  loading: boolean;
+  onSubmit: (answers: Array<{ question: string; answer: string; required: boolean }>) => Promise<void>;
+}) {
+  const questions = analysis.clarificationQuestions?.filter((question) => question.required) ?? [];
+  const [answers, setAnswers] = useState<Record<string, string>>(() => Object.fromEntries((requirement.clarificationAnswers ?? []).map((item) => [item.question, item.answer])));
+
+  if (requirement.status !== "NEEDS_CLARIFICATION" || questions.length === 0) return null;
+
+  const canSubmit = questions.every((question) => answers[question.question]?.trim());
+
+  return (
+    <Card className="border-amber-200 bg-amber-50/60">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" /> Required clarification answers</CardTitle>
+        <CardDescription>Answer each required question to mark this requirement ready for human approval.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {questions.map((question, index) => (
+          <div key={`${question.question}-${index}`} className="rounded-xl bg-white p-3">
+            <p className="text-sm font-medium text-slate-900">{question.question}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{question.reason}</p>
+            <Textarea
+              className="mt-3 min-h-20 bg-white"
+              value={answers[question.question] ?? ""}
+              onChange={(event) => setAnswers((current) => ({ ...current, [question.question]: event.target.value }))}
+              placeholder="Write the decision or answer here..."
+            />
+          </div>
+        ))}
+        <Button
+          disabled={loading || !canSubmit}
+          onClick={() => onSubmit(questions.map((question) => ({
+            question: question.question,
+            answer: answers[question.question]?.trim() ?? "",
+            required: question.required,
+          })))}
+        >
+          {loading ? <><Spinner /> Saving answers</> : "Save answers and mark ready"}
+        </Button>
       </CardContent>
     </Card>
   );
@@ -202,6 +255,43 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  async function saveClarificationAnswers(answers: Array<{ question: string; answer: string; required: boolean }>) {
+    if (!selectedRequirement) return;
+    setAction("clarifications");
+    setError("");
+    try {
+      const data = await api<{ requirement: Requirement }>(`/requirements/${selectedRequirement.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          clarificationAnswers: answers,
+          status: "READY",
+        }),
+      });
+      setRequirements((current) => current.map((item) => item.id === data.requirement.id ? data.requirement : item));
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Clarification answers could not be saved");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function approveRequirement() {
+    if (!selectedRequirement) return;
+    setAction("approve");
+    setError("");
+    try {
+      const data = await api<{ requirement: Requirement }>(`/requirements/${selectedRequirement.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "APPROVED" }),
+      });
+      setRequirements((current) => current.map((item) => item.id === data.requirement.id ? data.requirement : item));
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Requirement could not be approved");
+    } finally {
+      setAction("");
+    }
+  }
+
   async function updateTaskStatus(task: Task, status: TaskStatus) {
     try {
       const data = await api<{ task: Task }>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
@@ -263,9 +353,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         <TabsContent value="analysis">
           {!selectedRequirement ? <EmptyState icon={Sparkles} title="Select a requirement" text="Choose a requirement before running AI analysis." /> : !analysis ? <Card className="grid min-h-72 place-items-center p-8 text-center"><div><span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-50 text-violet-600"><Sparkles className="h-6 w-6" /></span><h3 className="mt-4 font-semibold">Ready for analysis</h3><p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Generate clarification questions, user stories, technical plans and risk analysis.</p><Button className="mt-5" onClick={() => runAnalysis(false)} disabled={action === "analyze"}>{action === "analyze" ? <><Spinner /> Analyzing</> : "Run AI analysis"}</Button></div></Card> : analysis.status !== "COMPLETED" ? <div className="space-y-5"><TelemetryGrid analysis={analysis} /><Card className="p-6"><h3 className="font-semibold">Analysis {analysis.status.toLowerCase()}</h3><p className="mt-2 text-sm text-slate-500">{analysis.errorMessage || "Please try again."}</p><Button className="mt-4" onClick={() => runAnalysis(true)}><RefreshCcw className="h-4 w-4" /> Retry</Button></Card></div> : (
             <div className="space-y-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-violet-600">{analysis.provider} · {analysis.model}</p><h2 className="mt-1 text-2xl font-bold tracking-tight">Development blueprint</h2></div><div className="flex gap-2"><Button variant="outline" onClick={() => runAnalysis(true)} disabled={action === "analyze"}><RefreshCcw className="h-4 w-4" /> Reanalyze</Button><Button onClick={() => generateTasks(false)} disabled={action === "tasks" || selectedRequirement.status === "NEEDS_CLARIFICATION"}>{action === "tasks" ? <><Spinner /> Generating</> : <><ListChecks className="h-4 w-4" /> Generate tasks</>}</Button></div></div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-violet-600">{analysis.provider} · {analysis.model}</p><h2 className="mt-1 text-2xl font-bold tracking-tight">Development blueprint</h2></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => runAnalysis(true)} disabled={action === "analyze"}><RefreshCcw className="h-4 w-4" /> Reanalyze</Button>{selectedRequirement.status === "READY" && <Button variant="outline" onClick={() => approveRequirement()} disabled={action === "approve"}>{action === "approve" ? <><Spinner /> Approving</> : <><CheckCircle2 className="h-4 w-4" /> Approve</>}</Button>}<Button onClick={() => generateTasks(false)} disabled={action === "tasks" || selectedRequirement.status !== "APPROVED"}>{action === "tasks" ? <><Spinner /> Generating</> : <><ListChecks className="h-4 w-4" /> Generate tasks</>}</Button></div></div>
               {selectedRequirement.status === "NEEDS_CLARIFICATION" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Resolve the required questions, update the requirement, then mark it ready before generating tasks.</div>}
+              {selectedRequirement.status !== "APPROVED" && selectedRequirement.status !== "NEEDS_CLARIFICATION" && <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">Approve this requirement before generating tasks.</div>}
               <TelemetryGrid analysis={analysis} />
+              <ClarificationAnswerCard analysis={analysis} requirement={selectedRequirement} loading={action === "clarifications"} onSubmit={saveClarificationAnswers} />
               <div className="grid gap-5 lg:grid-cols-2">
                 <Card><CardHeader><CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" /> Clarification questions</CardTitle></CardHeader><CardContent className="space-y-3">{analysis.clarificationQuestions?.length ? analysis.clarificationQuestions.map((question, index) => <div key={`${question.question}-${index}`} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start gap-2"><CircleDot className={`mt-1 h-3.5 w-3.5 ${question.required ? "text-rose-500" : "text-slate-400"}`} /><div><p className="text-sm font-medium">{question.question}</p><p className="mt-1 text-xs leading-5 text-slate-500">{question.reason}</p>{question.options.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{question.options.map((option) => <Badge key={option}>{option}</Badge>)}</div>}</div></div></div>) : <p className="text-sm text-slate-500">No blocking questions detected.</p>}</CardContent></Card>
                 <Card><CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Functional requirements</CardTitle></CardHeader><CardContent className="space-y-3">{analysis.functionalRequirements?.map((item) => <div key={item.id} className="rounded-xl bg-slate-50 p-3"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">{item.id} · {item.title}</p><Badge>{item.priority}</Badge></div><p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p></div>)}</CardContent></Card>
@@ -278,7 +370,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </TabsContent>
 
         <TabsContent value="tasks">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold">Engineering backlog</h2><p className="mt-1 text-sm text-slate-500">Move tasks through the workflow and assign them to a sprint.</p></div>{analysis && <Button variant="outline" onClick={() => generateTasks(tasks.some((task) => task.analysisId === analysis.id))} disabled={action === "tasks"}>{action === "tasks" && <Spinner />} {tasks.some((task) => task.analysisId === analysis.id) ? "Regenerate tasks" : "Generate tasks"}</Button>}</div>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold">Engineering backlog</h2><p className="mt-1 text-sm text-slate-500">Move tasks through the workflow and assign them to a sprint.</p>{selectedRequirement && selectedRequirement.status !== "APPROVED" && <p className="mt-1 text-xs text-amber-700">Approve the selected requirement before generating tasks.</p>}</div>{analysis && <Button variant="outline" onClick={() => generateTasks(tasks.some((task) => task.analysisId === analysis.id))} disabled={action === "tasks" || selectedRequirement?.status !== "APPROVED"}>{action === "tasks" && <Spinner />} {tasks.some((task) => task.analysisId === analysis.id) ? "Regenerate tasks" : "Generate tasks"}</Button>}</div>
           {tasks.length === 0 ? <EmptyState icon={ListChecks} title="No tasks generated" text="Analyze a requirement and generate a development-ready backlog." /> : <div className="overflow-x-auto pb-3"><div className="grid min-w-[1100px] grid-cols-5 gap-3">{taskColumns.map((column) => <div key={column.key} className="rounded-2xl bg-slate-100/80 p-3"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{column.label}</h3><Badge>{groupedTasks[column.key].length}</Badge></div><div className="space-y-3">{groupedTasks[column.key].map((task) => <motion.div layout key={task.id}><Card className="p-3.5"><div className="flex items-start justify-between gap-2"><Badge>{task.type}</Badge><Badge className={priorityClass[task.priority]}>{task.priority}</Badge></div><h4 className="mt-3 text-sm font-semibold leading-5">{task.title}</h4><p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{task.description}</p><div className="mt-2"><EditTaskDialog task={task} onUpdated={(updated) => setTasks((current) => current.map((item) => item.id === updated.id ? updated : item))} /></div><div className="mt-3 flex flex-wrap gap-1">{task.labels.slice(0, 3).map((label) => <span key={label} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{label}</span>)}</div><div className="mt-4 grid gap-2"><select aria-label="Task status" value={task.status} onChange={(event) => void updateTaskStatus(task, event.target.value as TaskStatus)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none">{taskColumns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select><select aria-label="Sprint assignment" value={task.sprintId ?? ""} onChange={(event) => void assignSprint(task, event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none"><option value="">No sprint</option>{sprints.filter((sprint) => sprint.status !== "COMPLETED").map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}</select></div><div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500"><span>{task.storyPoints ?? "—"} points</span><span>{task.sprint?.name ?? "Backlog"}</span></div></Card></motion.div>)}</div></div>)}</div></div>}
         </TabsContent>
 
