@@ -15,6 +15,7 @@
     "db:deploy": "npm run prisma:deploy -w @specforge/backend"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "concurrently": "9.2.1"
   },
   "engines": {
