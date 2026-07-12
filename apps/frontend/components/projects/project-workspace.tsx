@@ -58,6 +58,64 @@ function EmptyState({ icon: Icon, title, text }: { icon: React.ComponentType<{ c
   );
 }
 
+function formatDuration(milliseconds: number | null) {
+  if (milliseconds === null) return "—";
+  if (milliseconds < 1000) return `${milliseconds}ms`;
+  return `${(milliseconds / 1000).toFixed(1)}s`;
+}
+
+function formatNumber(value: number | null) {
+  return value === null ? "—" : value.toLocaleString();
+}
+
+function TelemetryGrid({ analysis }: { analysis: AIAnalysis }) {
+  const items = [
+    { label: "Analysis attempts", value: analysis.attempts.toString() },
+    { label: "Analysis duration", value: formatDuration(analysis.durationMs) },
+    { label: "Analysis tokens", value: formatNumber(analysis.totalTokens) },
+    { label: "Prompt schema", value: analysis.promptSchemaVersion },
+    { label: "Task attempts", value: analysis.taskGenerationAttempts.toString() },
+    { label: "Task duration", value: formatDuration(analysis.taskGenerationDurationMs) },
+    { label: "Task tokens", value: formatNumber(analysis.taskGenerationTotalTokens) },
+    { label: "Last updated", value: new Date(analysis.updatedAt).toLocaleString() },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-violet-600" /> AI telemetry</CardTitle>
+        <CardDescription>Attempts, duration, token usage and safe error categories.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {items.map((item) => (
+            <div key={item.label} className="rounded-xl bg-slate-50 p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{item.label}</p>
+              <p className="mt-1 truncate text-sm font-semibold text-slate-900">{item.value}</p>
+            </div>
+          ))}
+        </div>
+        {(analysis.errorCategory || analysis.taskGenerationErrorCategory) && (
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {analysis.errorCategory && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                <p className="font-semibold">Analysis error: {analysis.errorCategory.replaceAll("_", " ")}</p>
+                {analysis.errorMessage && <p className="mt-1 text-xs leading-5">{analysis.errorMessage}</p>}
+              </div>
+            )}
+            {analysis.taskGenerationErrorCategory && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <p className="font-semibold">Task generation error: {analysis.taskGenerationErrorCategory.replaceAll("_", " ")}</p>
+                {analysis.taskGenerationErrorMessage && <p className="mt-1 text-xs leading-5">{analysis.taskGenerationErrorMessage}</p>}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<Project | null>(null);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
@@ -203,10 +261,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </TabsContent>
 
         <TabsContent value="analysis">
-          {!selectedRequirement ? <EmptyState icon={Sparkles} title="Select a requirement" text="Choose a requirement before running AI analysis." /> : !analysis ? <Card className="grid min-h-72 place-items-center p-8 text-center"><div><span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-50 text-violet-600"><Sparkles className="h-6 w-6" /></span><h3 className="mt-4 font-semibold">Ready for analysis</h3><p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Generate clarification questions, user stories, technical plans and risk analysis.</p><Button className="mt-5" onClick={() => runAnalysis(false)} disabled={action === "analyze"}>{action === "analyze" ? <><Spinner /> Analyzing</> : "Run AI analysis"}</Button></div></Card> : analysis.status !== "COMPLETED" ? <Card className="p-6"><h3 className="font-semibold">Analysis {analysis.status.toLowerCase()}</h3><p className="mt-2 text-sm text-slate-500">{analysis.errorMessage || "Please try again."}</p><Button className="mt-4" onClick={() => runAnalysis(true)}><RefreshCcw className="h-4 w-4" /> Retry</Button></Card> : (
+          {!selectedRequirement ? <EmptyState icon={Sparkles} title="Select a requirement" text="Choose a requirement before running AI analysis." /> : !analysis ? <Card className="grid min-h-72 place-items-center p-8 text-center"><div><span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-50 text-violet-600"><Sparkles className="h-6 w-6" /></span><h3 className="mt-4 font-semibold">Ready for analysis</h3><p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Generate clarification questions, user stories, technical plans and risk analysis.</p><Button className="mt-5" onClick={() => runAnalysis(false)} disabled={action === "analyze"}>{action === "analyze" ? <><Spinner /> Analyzing</> : "Run AI analysis"}</Button></div></Card> : analysis.status !== "COMPLETED" ? <div className="space-y-5"><TelemetryGrid analysis={analysis} /><Card className="p-6"><h3 className="font-semibold">Analysis {analysis.status.toLowerCase()}</h3><p className="mt-2 text-sm text-slate-500">{analysis.errorMessage || "Please try again."}</p><Button className="mt-4" onClick={() => runAnalysis(true)}><RefreshCcw className="h-4 w-4" /> Retry</Button></Card></div> : (
             <div className="space-y-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-violet-600">{analysis.provider} · {analysis.model}</p><h2 className="mt-1 text-2xl font-bold tracking-tight">Development blueprint</h2></div><div className="flex gap-2"><Button variant="outline" onClick={() => runAnalysis(true)} disabled={action === "analyze"}><RefreshCcw className="h-4 w-4" /> Reanalyze</Button><Button onClick={() => generateTasks(false)} disabled={action === "tasks" || selectedRequirement.status === "NEEDS_CLARIFICATION"}>{action === "tasks" ? <><Spinner /> Generating</> : <><ListChecks className="h-4 w-4" /> Generate tasks</>}</Button></div></div>
               {selectedRequirement.status === "NEEDS_CLARIFICATION" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Resolve the required questions, update the requirement, then mark it ready before generating tasks.</div>}
+              <TelemetryGrid analysis={analysis} />
               <div className="grid gap-5 lg:grid-cols-2">
                 <Card><CardHeader><CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" /> Clarification questions</CardTitle></CardHeader><CardContent className="space-y-3">{analysis.clarificationQuestions?.length ? analysis.clarificationQuestions.map((question, index) => <div key={`${question.question}-${index}`} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start gap-2"><CircleDot className={`mt-1 h-3.5 w-3.5 ${question.required ? "text-rose-500" : "text-slate-400"}`} /><div><p className="text-sm font-medium">{question.question}</p><p className="mt-1 text-xs leading-5 text-slate-500">{question.reason}</p>{question.options.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{question.options.map((option) => <Badge key={option}>{option}</Badge>)}</div>}</div></div></div>) : <p className="text-sm text-slate-500">No blocking questions detected.</p>}</CardContent></Card>
                 <Card><CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Functional requirements</CardTitle></CardHeader><CardContent className="space-y-3">{analysis.functionalRequirements?.map((item) => <div key={item.id} className="rounded-xl bg-slate-50 p-3"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">{item.id} · {item.title}</p><Badge>{item.priority}</Badge></div><p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p></div>)}</CardContent></Card>

@@ -52,6 +52,20 @@ export interface AIAnalysis {
   status: "PROCESSING" | "COMPLETED" | "FAILED";
   provider: string;
   model: string;
+  errorCategory: string | null;
+  promptSchemaVersion: string;
+  attempts: number;
+  durationMs: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  taskGenerationAttempts: number;
+  taskGenerationDurationMs: number | null;
+  taskGenerationPromptTokens: number | null;
+  taskGenerationCompletionTokens: number | null;
+  taskGenerationTotalTokens: number | null;
+  taskGenerationErrorCategory: string | null;
+  taskGenerationErrorMessage: string | null;
   clarificationQuestions: Array<{ question: string; reason: string; options: string[]; required: boolean }> | null;
   functionalRequirements: Array<{ id: string; title: string; description: string; priority: string }> | null;
   nonFunctionalRequirements: Array<{ category: string; description: string; measurableTarget: string }> | null;
@@ -68,6 +82,7 @@ export interface AIAnalysis {
   risks: Array<{ title: string; impact: string; mitigation: string }> | null;
   errorMessage: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export type TaskStatus = "BACKLOG" | "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
