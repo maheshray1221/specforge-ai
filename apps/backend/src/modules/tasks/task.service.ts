@@ -2,6 +2,7 @@ import { AnalysisStatus, ProjectStatus, RequirementStatus, TaskStatus } from "@p
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { generateStructuredOutput } from "../../lib/ai/groq.client.js";
+import { extractAIErrorTelemetry } from "../../lib/ai/telemetry.js";
 import { ApiError } from "../../utils/api-error.js";
 import { aiAnalysisOutputSchema } from "../ai-analysis/ai-analysis.output.js";
 import { WRITE_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
@@ -72,16 +73,34 @@ export async function generateTasks(userId: string, analysisId: string, regenera
     if (locked) throw new ApiError(409, "Tasks cannot be regenerated after sprint planning or work has started");
   }
 
-  const result = await generateStructuredOutput({
-    schemaName: "specforge_task_backlog",
-    schema: taskGeneratorJsonSchema,
-    system: TASK_SYSTEM_PROMPT,
-    prompt: buildTaskPrompt({ projectName: analysis.requirement.project.name, requirementTitle: analysis.requirement.title, requirementContent: analysis.requirementVersion.content, analysis: stored.data }),
-    parse: (value) => taskGeneratorOutputSchema.parse(value),
-    // Keep the combined prompt and completion below Groq's 8K TPM limit
-    // on the default on-demand tier.
-    maxOutputTokens: 5000,
-  });
+  let result: Awaited<ReturnType<typeof generateStructuredOutput<typeof taskGeneratorOutputSchema._output>>>;
+
+  try {
+    result = await generateStructuredOutput({
+      schemaName: "specforge_task_backlog",
+      schema: taskGeneratorJsonSchema,
+      system: TASK_SYSTEM_PROMPT,
+      prompt: buildTaskPrompt({ projectName: analysis.requirement.project.name, requirementTitle: analysis.requirement.title, requirementContent: analysis.requirementVersion.content, analysis: stored.data }),
+      parse: (value) => taskGeneratorOutputSchema.parse(value),
+      // Keep the combined prompt and completion below Groq's 8K TPM limit
+      // on the default on-demand tier.
+      maxOutputTokens: 5000,
+    });
+  } catch (error) {
+    const telemetry = extractAIErrorTelemetry(error);
+
+    await prisma.aIAnalysis.update({
+      where: { id: analysisId },
+      data: {
+        taskGenerationAttempts: telemetry.attempts,
+        taskGenerationDurationMs: telemetry.durationMs ?? null,
+        taskGenerationErrorCategory: telemetry.errorCategory,
+        taskGenerationErrorMessage: telemetry.message,
+      },
+    });
+
+    throw error;
+  }
 
   await prisma.$transaction(async (tx) => {
     if (regenerate) await tx.task.deleteMany({ where: { analysisId } });
@@ -102,6 +121,18 @@ export async function generateTasks(userId: string, analysisId: string, regenera
         labels: normalizeLabels([...task.labels, ...task.sourceUserStoryIds.map((id) => `story:${id}`)]),
         position,
       })),
+    });
+    await tx.aIAnalysis.update({
+      where: { id: analysisId },
+      data: {
+        taskGenerationAttempts: result.telemetry.attempts,
+        taskGenerationDurationMs: result.telemetry.durationMs,
+        taskGenerationPromptTokens: result.usage?.prompt_tokens ?? null,
+        taskGenerationCompletionTokens: result.usage?.completion_tokens ?? null,
+        taskGenerationTotalTokens: result.usage?.total_tokens ?? null,
+        taskGenerationErrorCategory: null,
+        taskGenerationErrorMessage: null,
+      },
     });
   });
 

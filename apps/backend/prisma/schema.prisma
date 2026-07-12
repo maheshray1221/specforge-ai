@@ -31,6 +31,17 @@ enum AnalysisStatus {
   FAILED
 }
 
+enum AIErrorCategory {
+  CONFIGURATION
+  INPUT_TOO_LARGE
+  RATE_LIMIT
+  PROVIDER_UNAVAILABLE
+  PROVIDER_BAD_RESPONSE
+  TIMEOUT
+  VALIDATION
+  UNKNOWN
+}
+
 enum TaskType {
   FRONTEND
   BACKEND
@@ -177,6 +188,20 @@ model AIAnalysis {
   risks                     Json?
   rawOutput                 Json?
   errorMessage              String?
+  errorCategory             AIErrorCategory?
+  promptSchemaVersion       String         @default("v1")
+  attempts                  Int            @default(0)
+  durationMs                Int?
+  promptTokens              Int?
+  completionTokens          Int?
+  totalTokens               Int?
+  taskGenerationAttempts    Int            @default(0)
+  taskGenerationDurationMs  Int?
+  taskGenerationPromptTokens Int?
+  taskGenerationCompletionTokens Int?
+  taskGenerationTotalTokens Int?
+  taskGenerationErrorCategory AIErrorCategory?
+  taskGenerationErrorMessage String?
   createdAt                 DateTime       @default(now())
   updatedAt                 DateTime       @updatedAt
   requirement               Requirement    @relation(fields: [requirementId], references: [id], onDelete: Cascade)

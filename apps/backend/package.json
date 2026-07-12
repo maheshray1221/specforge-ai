@@ -9,10 +9,10 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --max-warnings=0",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "prisma:deploy": "prisma migrate deploy"
+    "prisma:generate": "node ./node_modules/prisma/build/index.js generate",
+    "prisma:migrate": "node ./node_modules/prisma/build/index.js migrate dev",
+    "prisma:studio": "node ./node_modules/prisma/build/index.js studio",
+    "prisma:deploy": "node ./node_modules/prisma/build/index.js migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",

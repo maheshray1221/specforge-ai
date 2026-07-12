@@ -2,6 +2,7 @@ import { AnalysisStatus, RequirementStatus } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../config/prisma.js";
 import { generateStructuredOutput } from "../../lib/ai/groq.client.js";
+import { extractAIErrorTelemetry } from "../../lib/ai/telemetry.js";
 import { ApiError } from "../../utils/api-error.js";
 import { WRITE_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
 import { aiAnalysisJsonSchema, aiAnalysisOutputSchema } from "./ai-analysis.output.js";
@@ -21,9 +22,25 @@ const analysisSelect = {
   technicalPlan: true,
   risks: true,
   errorMessage: true,
+  errorCategory: true,
+  promptSchemaVersion: true,
+  attempts: true,
+  durationMs: true,
+  promptTokens: true,
+  completionTokens: true,
+  totalTokens: true,
+  taskGenerationAttempts: true,
+  taskGenerationDurationMs: true,
+  taskGenerationPromptTokens: true,
+  taskGenerationCompletionTokens: true,
+  taskGenerationTotalTokens: true,
+  taskGenerationErrorCategory: true,
+  taskGenerationErrorMessage: true,
   createdAt: true,
   updatedAt: true,
 } as const;
+
+const ANALYSIS_PROMPT_SCHEMA_VERSION = "requirement-analysis:v1";
 
 export async function analyzeRequirement(userId: string, requirementId: string, force: boolean) {
   const requirement = await prisma.requirement.findFirst({
@@ -50,7 +67,14 @@ export async function analyzeRequirement(userId: string, requirementId: string, 
   }
 
   const record = await prisma.aIAnalysis.create({
-    data: { requirementId, requirementVersionId: version.id, provider: "groq", model: env.GROQ_MODEL, status: AnalysisStatus.PROCESSING },
+    data: {
+      requirementId,
+      requirementVersionId: version.id,
+      provider: "groq",
+      model: env.GROQ_MODEL,
+      status: AnalysisStatus.PROCESSING,
+      promptSchemaVersion: ANALYSIS_PROMPT_SCHEMA_VERSION,
+    },
     select: { id: true },
   });
 
@@ -80,15 +104,30 @@ export async function analyzeRequirement(userId: string, requirementId: string, 
           technicalPlan: result.data.technicalPlan,
           risks: result.data.risks,
           rawOutput: result.data,
+          errorMessage: null,
+          errorCategory: null,
+          attempts: result.telemetry.attempts,
+          durationMs: result.telemetry.durationMs,
+          promptTokens: result.usage?.prompt_tokens ?? null,
+          completionTokens: result.usage?.completion_tokens ?? null,
+          totalTokens: result.usage?.total_tokens ?? null,
         },
         select: analysisSelect,
       });
     });
     return { analysis, reused: false };
   } catch (error) {
+    const telemetry = extractAIErrorTelemetry(error);
+
     await prisma.aIAnalysis.update({
       where: { id: record.id },
-      data: { status: AnalysisStatus.FAILED, errorMessage: error instanceof Error ? error.message : "AI analysis failed" },
+      data: {
+        status: AnalysisStatus.FAILED,
+        errorMessage: telemetry.message,
+        errorCategory: telemetry.errorCategory,
+        attempts: telemetry.attempts,
+        durationMs: telemetry.durationMs ?? null,
+      },
     });
     throw error;
   }

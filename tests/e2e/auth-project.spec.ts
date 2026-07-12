@@ -109,7 +109,7 @@ test("new user can register and create a project", async ({ page }) => {
   await page.getByRole("button", { name: /create account/i }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
   await expect(page.getByText("No projects found")).toBeVisible();
 
   await page.getByRole("button", { name: /new project/i }).click();
