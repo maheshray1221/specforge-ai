@@ -5,6 +5,8 @@ dist
 .env.local
 *.log
 coverage
+playwright-report
+test-results
 *.tsbuildinfo
 apps/backend/prisma/dev.db
 .DS_Store
