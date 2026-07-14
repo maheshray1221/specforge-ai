@@ -255,6 +255,38 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
   let currentRequirement: typeof requirement | null = null;
   let currentAnalysis: typeof completedAnalysis | null = null;
   let tasks: typeof generatedTask[] = [];
+  let feedbackSubmitted = 0;
+  let comments: Array<{
+    id: string;
+    taskId: string;
+    projectId: string;
+    body: string;
+    createdAt: string;
+    updatedAt: string;
+    author: { id: string; name: string; email: string };
+  }> = [];
+  let notifications = [{
+    id: "550e8400-e29b-41d4-a716-446655440098",
+    projectId: createdProject.id,
+    title: "Task generated",
+    body: "Your AI-generated task backlog is ready.",
+    readAt: null as string | null,
+    metadata: {},
+    createdAt: "2026-07-12T00:00:00.000Z",
+  }];
+  let integrations = [{
+    id: "550e8400-e29b-41d4-a716-446655440097",
+    projectId: createdProject.id,
+    provider: "GITHUB",
+    status: "CONNECTED",
+    displayName: "GitHub issues",
+    externalRef: "specforge/demo",
+    config: { labels: ["specforge"], dryRun: true },
+    lastSyncedAt: null,
+    lastError: null,
+    createdAt: "2026-07-12T00:00:00.000Z",
+    updatedAt: "2026-07-12T00:00:00.000Z",
+  }];
 
   await page.route(apiPattern, async (route) => {
     const request = route.request();
@@ -409,7 +441,7 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
               REQUIREMENT_APPROVED: currentRequirement?.status === "APPROVED" ? 1 : 0,
               TASKS_GENERATED: tasks.length > 0 ? 1 : 0,
               SPRINT_CREATED: 0,
-              ANALYSIS_FEEDBACK_SUBMITTED: 0,
+              ANALYSIS_FEEDBACK_SUBMITTED: feedbackSubmitted,
             },
             activationFunnel: {
               projectCreated: 1,
@@ -419,7 +451,7 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
               tasksGenerated: tasks.length > 0 ? 1 : 0,
               sprintCreated: 0,
             },
-            aiFeedback: { submitted: 0 },
+            aiFeedback: { submitted: feedbackSubmitted },
           },
         }),
       });
@@ -456,17 +488,22 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
         body: JSON.stringify({
           success: true,
           data: {
-            notifications: [{
-              id: "550e8400-e29b-41d4-a716-446655440098",
-              projectId: createdProject.id,
-              title: "Task generated",
-              body: "Your AI-generated task backlog is ready.",
-              readAt: null,
-              metadata: {},
-              createdAt: "2026-07-12T00:00:00.000Z",
-            }],
+            notifications,
           },
         }),
+      });
+      return;
+    }
+
+    if (path === `/notifications/${notifications[0].id}/read` && request.method() === "PATCH") {
+      notifications = notifications.map((notification) => ({
+        ...notification,
+        readAt: "2026-07-12T00:01:00.000Z",
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { notification: notifications[0] } }),
       });
       return;
     }
@@ -478,21 +515,77 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
         body: JSON.stringify({
           success: true,
           data: {
-            integrations: [{
-              id: "550e8400-e29b-41d4-a716-446655440097",
-              projectId: createdProject.id,
-              provider: "GITHUB",
-              status: "CONNECTED",
-              displayName: "GitHub issues",
-              externalRef: "specforge/demo",
-              config: { labels: ["specforge"], dryRun: true },
-              lastSyncedAt: null,
-              lastError: null,
-              createdAt: "2026-07-12T00:00:00.000Z",
-              updatedAt: "2026-07-12T00:00:00.000Z",
-            }],
+            integrations,
           },
         }),
+      });
+      return;
+    }
+
+    if (path === `/integrations/${integrations[0].id}` && request.method() === "PATCH") {
+      const payload = await request.postDataJSON();
+      integrations = integrations.map((integration) => ({
+        ...integration,
+        status: payload.status ?? integration.status,
+        updatedAt: "2026-07-12T00:02:00.000Z",
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { integration: integrations[0] } }),
+      });
+      return;
+    }
+
+    if (path === `/analyses/${completedAnalysis.id}/feedback` && request.method() === "POST") {
+      feedbackSubmitted += 1;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            event: {
+              id: "550e8400-e29b-41d4-a716-446655440096",
+              type: "ANALYSIS_FEEDBACK_SUBMITTED",
+              userId: user.id,
+              projectId: createdProject.id,
+              entityType: "AIAnalysis",
+              entityId: completedAnalysis.id,
+              metadata: { useful: true },
+              createdAt: "2026-07-12T00:03:00.000Z",
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    if (path === `/tasks/${generatedTask.id}/comments` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { comments } }),
+      });
+      return;
+    }
+
+    if (path === `/tasks/${generatedTask.id}/comments` && request.method() === "POST") {
+      const payload = await request.postDataJSON();
+      const comment = {
+        id: "550e8400-e29b-41d4-a716-446655440095",
+        taskId: generatedTask.id,
+        projectId: createdProject.id,
+        body: payload.body,
+        createdAt: "2026-07-12T00:04:00.000Z",
+        updatedAt: "2026-07-12T00:04:00.000Z",
+        author: { id: user.id, name: user.name, email: user.email },
+      };
+      comments = [...comments, comment];
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { comment } }),
       });
       return;
     }
@@ -555,4 +648,33 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
   await page.getByRole("button", { name: /generate tasks/i }).click();
   await page.getByRole("tab", { name: /tasks/i }).click();
   await expect(page.getByText(generatedTask.title)).toBeVisible();
+
+  await expect(page.getByText("Usage & quotas")).toBeVisible();
+  await expect(page.getByText("99 remaining")).toBeVisible();
+
+  await page.getByRole("tab", { name: /ai analysis/i }).click();
+  await page.getByRole("button", { name: /^useful$/i }).click();
+  await expect(page.getByText("Thanks — marked this AI output as useful.")).toBeVisible();
+
+  await page.getByRole("tab", { name: /analytics/i }).click();
+  await expect(page.getByText("Activation funnel")).toBeVisible();
+  await expect(page.getByText("feedback submissions")).toBeVisible();
+
+  await page.getByRole("tab", { name: /collaboration/i }).click();
+  await expect(page.getByText("Project activity")).toBeVisible();
+  await expect(page.getByText("Task generated")).toBeVisible();
+  await page.getByRole("button", { name: /mark read/i }).click();
+  await expect(page.getByText("0 unread notifications.")).toBeVisible();
+
+  await page.getByRole("tab", { name: /tasks/i }).click();
+  await page.getByRole("button", { name: /comments/i }).click();
+  await page.getByPlaceholder(`Comment on "${generatedTask.title}"...`).fill("Looks good for backend implementation.");
+  await page.getByRole("button", { name: /post comment/i }).click();
+  await expect(page.getByText("Looks good for backend implementation.")).toBeVisible();
+
+  await page.getByRole("tab", { name: /integrations/i }).click();
+  await expect(page.getByText("GitHub issues")).toBeVisible();
+  await expect(page.getByText("CONNECTED")).toBeVisible();
+  await page.getByRole("button", { name: /^pause$/i }).click();
+  await expect(page.getByText("PAUSED")).toBeVisible();
 });

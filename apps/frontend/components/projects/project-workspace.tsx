@@ -616,8 +616,14 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     try {
       const data = await api<{ analysis: AIAnalysis; reused: boolean }>(`/requirements/${selectedRequirement.id}/analyze`, { method: "POST", body: JSON.stringify({ force }) });
       setAnalysis(data.analysis);
-      const refreshed = await api<{ requirements: Requirement[] }>(`/projects/${projectId}/requirements`);
+      const [refreshed, usageData, analyticsData] = await Promise.all([
+        api<{ requirements: Requirement[] }>(`/projects/${projectId}/requirements`),
+        api<ProjectUsage>(`/projects/${projectId}/usage`),
+        api<ProjectAnalyticsSummary>(`/projects/${projectId}/analytics/summary?days=30`),
+      ]);
       setRequirements(refreshed.requirements);
+      setUsage(usageData);
+      setAnalytics(analyticsData);
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "AI analysis failed");
     } finally {
@@ -632,6 +638,12 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     try {
       const data = await api<{ tasks: Task[]; generationNotes: string[]; reused: boolean }>(`/analyses/${analysis.id}/tasks/generate`, { method: "POST", body: JSON.stringify({ regenerate }) });
       setTasks((current) => [...current.filter((task) => task.analysisId !== analysis.id), ...data.tasks]);
+      const [usageData, analyticsData] = await Promise.all([
+        api<ProjectUsage>(`/projects/${projectId}/usage`),
+        api<ProjectAnalyticsSummary>(`/projects/${projectId}/analytics/summary?days=30`),
+      ]);
+      setUsage(usageData);
+      setAnalytics(analyticsData);
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "Task generation failed");
     } finally {
