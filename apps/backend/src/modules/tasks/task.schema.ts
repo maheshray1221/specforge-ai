@@ -3,7 +3,10 @@ import { z } from "zod";
 
 export const generateTasksSchema = z.object({
   params: z.object({ analysisId: z.string().uuid() }),
-  body: z.object({ regenerate: z.boolean().default(false) }).default({ regenerate: false }),
+  body: z.object({
+    regenerate: z.boolean().default(false),
+    async: z.boolean().default(false),
+  }).default({ regenerate: false, async: false }),
 });
 
 export const listTasksSchema = z.object({

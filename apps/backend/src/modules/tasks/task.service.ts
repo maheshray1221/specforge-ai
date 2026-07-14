@@ -4,7 +4,8 @@ import { prisma } from "../../config/prisma.js";
 import { generateStructuredOutput } from "../../lib/ai/groq.client.js";
 import { extractAIErrorTelemetry } from "../../lib/ai/telemetry.js";
 import { ApiError } from "../../utils/api-error.js";
-import { completeAIJob, createAIJob, failAIJob } from "../ai-jobs/ai-job.service.js";
+import { runAIJobInBackground } from "../ai-jobs/ai-job.runner.js";
+import { completeAIJob, createAIJob, enqueueAIJob, failAIJob } from "../ai-jobs/ai-job.service.js";
 import { aiAnalysisOutputSchema } from "../ai-analysis/ai-analysis.output.js";
 import { WRITE_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
 import { taskGeneratorJsonSchema, taskGeneratorOutputSchema } from "./task-generator.output.js";
@@ -32,6 +33,70 @@ const taskSelect = {
 } as const;
 
 const normalizeLabels = (labels: string[]) => [...new Set(labels.map((label) => label.trim().toLowerCase()).filter(Boolean))].slice(0, 20);
+
+export async function queueTaskGeneration(userId: string, analysisId: string, regenerate: boolean) {
+  const analysis = await prisma.aIAnalysis.findFirst({
+    where: { id: analysisId, requirement: { project: { workspace: { memberships: { some: { userId } } } } } },
+    select: {
+      id: true,
+      status: true,
+      clarificationQuestions: true,
+      functionalRequirements: true,
+      nonFunctionalRequirements: true,
+      userStories: true,
+      technicalPlan: true,
+      risks: true,
+      requirementVersion: { select: { id: true } },
+      requirement: { select: { id: true, status: true, project: { select: { id: true, status: true } }, versions: { orderBy: { versionNumber: "desc" }, take: 1, select: { id: true } } } },
+    },
+  });
+  if (!analysis) throw new ApiError(404, "Analysis was not found");
+  const access = await getProjectAccess(userId, analysis.requirement.project.id);
+  assertRole(access.role, WRITE_ROLES, "Viewer members cannot generate tasks");
+  if (analysis.status !== AnalysisStatus.COMPLETED) throw new ApiError(409, "Tasks require a completed analysis");
+  if (analysis.requirement.project.status === ProjectStatus.ARCHIVED) throw new ApiError(409, "Archived projects cannot be changed");
+  if (analysis.requirement.status !== RequirementStatus.APPROVED) throw new ApiError(409, "Approve the requirement before generating tasks");
+  if (analysis.requirement.versions[0]?.id !== analysis.requirementVersion.id) throw new ApiError(409, "Analysis is not based on the latest requirement version");
+
+  const stored = aiAnalysisOutputSchema.safeParse({
+    clarificationQuestions: analysis.clarificationQuestions,
+    functionalRequirements: analysis.functionalRequirements,
+    nonFunctionalRequirements: analysis.nonFunctionalRequirements,
+    userStories: analysis.userStories,
+    technicalPlan: analysis.technicalPlan,
+    risks: analysis.risks,
+  });
+  if (!stored.success) throw new ApiError(409, "Stored analysis is incomplete or invalid");
+
+  const existing = await prisma.task.findMany({ where: { analysisId }, select: taskSelect, orderBy: { position: "asc" } });
+  if (existing.length && !regenerate) return { tasks: existing, generationNotes: [], reused: true, queued: false };
+  if (regenerate) {
+    const locked = await prisma.task.findFirst({ where: { analysisId, OR: [{ status: { not: TaskStatus.BACKLOG } }, { sprintId: { not: null } }] }, select: { id: true } });
+    if (locked) throw new ApiError(409, "Tasks cannot be regenerated after sprint planning or work has started");
+  }
+
+  const job = await enqueueAIJob({
+    type: AIJobType.TASK_GENERATION,
+    userId,
+    projectId: analysis.requirement.project.id,
+    requirementId: analysis.requirement.id,
+    analysisId,
+    idempotencyKey: `${analysisId}:${regenerate ? "regenerate" : "generate"}`,
+    provider: "groq",
+    model: "task-generator",
+    promptSchemaVersion: "task-backlog:v1",
+  });
+
+  runAIJobInBackground({
+    jobId: job.id,
+    jobName: "task-generation",
+    run: async () => {
+      await generateTasks(userId, analysisId, regenerate);
+    },
+  });
+
+  return { job, queued: true };
+}
 
 export async function generateTasks(userId: string, analysisId: string, regenerate: boolean) {
   const analysis = await prisma.aIAnalysis.findFirst({

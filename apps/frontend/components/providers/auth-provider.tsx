@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { User } from "@/lib/types";
 
@@ -18,15 +18,19 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const refreshVersion = useRef(0);
 
   const refreshUser = useCallback(async () => {
+    const version = refreshVersion.current + 1;
+    refreshVersion.current = version;
+
     try {
       const data = await api<{ user: User }>("/auth/me");
-      setUser(data.user);
+      if (refreshVersion.current === version) setUser(data.user);
     } catch {
-      setUser(null);
+      if (refreshVersion.current === version) setUser(null);
     } finally {
-      setLoading(false);
+      if (refreshVersion.current === version) setLoading(false);
     }
   }, []);
 

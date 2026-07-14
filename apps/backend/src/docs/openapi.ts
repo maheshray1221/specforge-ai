@@ -8,7 +8,7 @@ export const openApiDocument = {
   servers: [{ url: "/api/v1" }],
   tags: [
     { name: "Auth" }, { name: "Projects" }, { name: "Requirements" },
-    { name: "AI Analysis" }, { name: "Tasks" }, { name: "Sprints" },
+    { name: "AI Analysis" }, { name: "AI Jobs" }, { name: "Tasks" }, { name: "Sprints" },
   ],
   components: {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
@@ -33,7 +33,9 @@ export const openApiDocument = {
       get: { tags: ["Requirements"], summary: "List requirements", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Requirements" } } },
     },
     "/requirements/{requirementId}/analyze": { post: { tags: ["AI Analysis"], summary: "Analyze requirement", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "requirementId", required: true, schema: { type: "string", format: "uuid" } }], requestBody: { content: { "application/json": { schema: { type: "object", properties: { force: { type: "boolean" } } } } } }, responses: { "201": { description: "Analyzed" } } } },
-    "/analyses/{analysisId}/tasks/generate": { post: { tags: ["Tasks"], summary: "Generate tasks", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "analysisId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "201": { description: "Generated" } } } },
+    "/analyses/{analysisId}/tasks/generate": { post: { tags: ["Tasks"], summary: "Generate tasks", description: "Pass async=true to queue task generation and poll the returned AI job.", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "analysisId", required: true, schema: { type: "string", format: "uuid" } }], requestBody: { content: { "application/json": { schema: { type: "object", properties: { regenerate: { type: "boolean" }, async: { type: "boolean" } } } } } }, responses: { "201": { description: "Generated" }, "202": { description: "Queued" } } } },
+    "/ai-jobs/{jobId}": { get: { tags: ["AI Jobs"], summary: "Get AI job status", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "jobId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "AI job" } } } },
+    "/projects/{projectId}/ai-jobs": { get: { tags: ["AI Jobs"], summary: "List project AI jobs", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }, { in: "query", name: "status", schema: { type: "string" } }, { in: "query", name: "type", schema: { type: "string" } }, { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "AI jobs" } } } },
     "/projects/{projectId}/tasks": { get: { tags: ["Tasks"], summary: "List project tasks", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Tasks" } } } },
     "/projects/{projectId}/sprints": {
       post: { tags: ["Sprints"], summary: "Create sprint", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "201": { description: "Created" } } },

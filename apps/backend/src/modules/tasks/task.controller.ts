@@ -2,8 +2,19 @@ import type { RequestHandler } from "express";
 import * as service from "./task.service.js";
 import { getRouteParam } from "../../utils/route.param.js";
 
-export const generate: RequestHandler = async (req, res) =>
-  res.status(201).json({
+export const generate: RequestHandler = async (req, res) => {
+  if (req.body.async) {
+    return res.status(202).json({
+      success: true,
+      data: await service.queueTaskGeneration(
+        req.user!.id,
+        getRouteParam(req.params.analysisId, "analysisId"),
+        req.body.regenerate,
+      ),
+    });
+  }
+
+  return res.status(201).json({
     success: true,
     data: await service.generateTasks(
       req.user!.id,
@@ -11,6 +22,7 @@ export const generate: RequestHandler = async (req, res) =>
       req.body.regenerate,
     ),
   });
+};
 export const list: RequestHandler = async (req, res) =>
   res.json({
     success: true,
