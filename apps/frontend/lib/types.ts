@@ -85,6 +85,23 @@ export interface TaskComment {
   author: { id: string; name: string; email: string };
 }
 
+export type IntegrationProvider = "GITHUB" | "JIRA" | "LINEAR" | "SLACK" | "WEBHOOK";
+export type IntegrationStatus = "CONNECTED" | "PAUSED" | "ERROR";
+
+export interface ProjectIntegration {
+  id: string;
+  projectId: string;
+  provider: IntegrationProvider;
+  status: IntegrationStatus;
+  displayName: string;
+  externalRef: string | null;
+  config: Record<string, unknown>;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RequirementVersion {
   id: string;
   versionNumber: number;

@@ -471,6 +471,32 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
       return;
     }
 
+    if (path === `/projects/${createdProject.id}/integrations` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            integrations: [{
+              id: "550e8400-e29b-41d4-a716-446655440097",
+              projectId: createdProject.id,
+              provider: "GITHUB",
+              status: "CONNECTED",
+              displayName: "GitHub issues",
+              externalRef: "specforge/demo",
+              config: { labels: ["specforge"], dryRun: true },
+              lastSyncedAt: null,
+              lastError: null,
+              createdAt: "2026-07-12T00:00:00.000Z",
+              updatedAt: "2026-07-12T00:00:00.000Z",
+            }],
+          },
+        }),
+      });
+      return;
+    }
+
     if (path === `/analyses/${completedAnalysis.id}/tasks/generate` && request.method() === "POST") {
       tasks = [generatedTask];
       currentAnalysis = currentAnalysis

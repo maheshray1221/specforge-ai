@@ -14,11 +14,13 @@ import {
   FileText,
   ListChecks,
   Bell,
+  Plug,
   RefreshCcw,
   Rocket,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
@@ -35,7 +37,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, apiText } from "@/lib/api";
-import type { AIAnalysis, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus } from "@/lib/types";
+import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus } from "@/lib/types";
 
 const taskColumns: Array<{ key: TaskStatus; label: string }> = [
   { key: "BACKLOG", label: "Backlog" },
@@ -51,6 +53,8 @@ const priorityClass: Record<Task["priority"], string> = {
   HIGH: "border-amber-200 bg-amber-50 text-amber-700",
   CRITICAL: "border-rose-200 bg-rose-50 text-rose-700",
 };
+
+const integrationProviders: IntegrationProvider[] = ["GITHUB", "JIRA", "LINEAR", "SLACK", "WEBHOOK"];
 
 function ErrorNotice({ message }: { message: string }) {
   if (!message) return null;
@@ -284,6 +288,105 @@ function CollaborationPanel({
   );
 }
 
+function IntegrationsPanel({
+  integrations,
+  draft,
+  loading,
+  onDraftChange,
+  onCreate,
+  onUpdateStatus,
+  onDelete,
+}: {
+  integrations: ProjectIntegration[];
+  draft: { provider: IntegrationProvider; displayName: string; externalRef: string; config: string };
+  loading: string;
+  onDraftChange: (draft: { provider: IntegrationProvider; displayName: string; externalRef: string; config: string }) => void;
+  onCreate: () => Promise<void>;
+  onUpdateStatus: (integration: ProjectIntegration, status: IntegrationStatus) => Promise<void>;
+  onDelete: (integration: ProjectIntegration) => Promise<void>;
+}) {
+  return (
+    <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Plug className="h-4 w-4 text-sky-600" /> Add integration</CardTitle>
+          <CardDescription>Store only non-secret routing config here. API tokens belong in a secure secret store.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <label className="block text-sm font-medium text-slate-700">Provider</label>
+          <select
+            value={draft.provider}
+            onChange={(event) => onDraftChange({ ...draft, provider: event.target.value as IntegrationProvider })}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none"
+          >
+            {integrationProviders.map((provider) => <option key={provider} value={provider}>{provider}</option>)}
+          </select>
+
+          <label className="block text-sm font-medium text-slate-700">Display name</label>
+          <input
+            value={draft.displayName}
+            onChange={(event) => onDraftChange({ ...draft, displayName: event.target.value })}
+            placeholder="GitHub issues"
+            className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
+          />
+
+          <label className="block text-sm font-medium text-slate-700">External reference</label>
+          <input
+            value={draft.externalRef}
+            onChange={(event) => onDraftChange({ ...draft, externalRef: event.target.value })}
+            placeholder="owner/repo, board key, channel, or webhook URL"
+            className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
+          />
+
+          <label className="block text-sm font-medium text-slate-700">Config JSON</label>
+          <Textarea
+            className="min-h-28 bg-white font-mono text-xs"
+            value={draft.config}
+            onChange={(event) => onDraftChange({ ...draft, config: event.target.value })}
+            placeholder='{"labels":["specforge"],"dryRun":true}'
+          />
+
+          <Button onClick={() => void onCreate()} disabled={loading === "integration-create" || !draft.displayName.trim()}>
+            {loading === "integration-create" ? <><Spinner /> Saving</> : "Create integration"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Configured integrations</CardTitle>
+          <CardDescription>Manage provider status and external routing references for this project.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {integrations.length === 0 ? <EmptyState icon={Plug} title="No integrations configured" text="Add GitHub, Jira, Linear, Slack or webhook routing when the project needs external handoff." /> : (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {integrations.map((integration) => (
+                <div key={integration.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2"><Badge>{integration.provider}</Badge><Badge className={integration.status === "CONNECTED" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : integration.status === "ERROR" ? "border-rose-200 bg-rose-50 text-rose-700" : ""}>{integration.status}</Badge></div>
+                      <h3 className="mt-3 font-semibold text-slate-900">{integration.displayName}</h3>
+                      <p className="mt-1 text-xs text-slate-500">{integration.externalRef || "No external reference"}</p>
+                    </div>
+                    <Button size="icon" variant="ghost" onClick={() => void onDelete(integration)}><Trash2 className="h-4 w-4 text-rose-500" /></Button>
+                  </div>
+                  {integration.lastError && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-xs leading-5 text-rose-700">{integration.lastError}</p>}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" disabled={loading === `integration-${integration.id}`} onClick={() => void onUpdateStatus(integration, integration.status === "PAUSED" ? "CONNECTED" : "PAUSED")}>
+                      {integration.status === "PAUSED" ? "Resume" : "Pause"}
+                    </Button>
+                    <span className="text-xs text-slate-500">Updated {new Date(integration.updatedAt).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function TaskCommentsPanel({
   task,
   comments,
@@ -434,6 +537,13 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [analytics, setAnalytics] = useState<ProjectAnalyticsSummary | null>(null);
   const [activity, setActivity] = useState<ProjectActivity[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
+  const [integrationDraft, setIntegrationDraft] = useState<{ provider: IntegrationProvider; displayName: string; externalRef: string; config: string }>({
+    provider: "GITHUB",
+    displayName: "",
+    externalRef: "",
+    config: "{}",
+  });
   const [openCommentsTaskId, setOpenCommentsTaskId] = useState<string>("");
   const [commentsByTask, setCommentsByTask] = useState<Record<string, TaskComment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -448,7 +558,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     setLoading(true);
     setError("");
     try {
-      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData, activityData, notificationData] = await Promise.all([
+      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData, activityData, notificationData, integrationData] = await Promise.all([
         api<{ project: Project }>(`/projects/${projectId}`),
         api<{ requirements: Requirement[] }>(`/projects/${projectId}/requirements`),
         api<{ tasks: Task[] }>(`/projects/${projectId}/tasks`),
@@ -457,6 +567,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         api<ProjectAnalyticsSummary>(`/projects/${projectId}/analytics/summary?days=30`),
         api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`),
         api<{ notifications: Notification[] }>("/notifications?limit=10"),
+        api<{ integrations: ProjectIntegration[] }>(`/projects/${projectId}/integrations`),
       ]);
       setProject(projectData.project);
       setRequirements(requirementData.requirements);
@@ -466,6 +577,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       setAnalytics(analyticsData);
       setActivity(activityData.activity);
       setNotifications(notificationData.notifications);
+      setIntegrations(integrationData.integrations);
       setSelectedRequirementId((current) => current || requirementData.requirements[0]?.id || "");
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "Project workspace could not be loaded");
@@ -677,6 +789,58 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  async function createIntegration() {
+    setAction("integration-create");
+    setError("");
+    try {
+      const parsedConfig = JSON.parse(integrationDraft.config || "{}") as Record<string, unknown>;
+      const data = await api<{ integration: ProjectIntegration }>(`/projects/${projectId}/integrations`, {
+        method: "POST",
+        body: JSON.stringify({
+          provider: integrationDraft.provider,
+          displayName: integrationDraft.displayName.trim(),
+          externalRef: integrationDraft.externalRef.trim() || undefined,
+          config: parsedConfig,
+        }),
+      });
+      setIntegrations((current) => [...current, data.integration].sort((left, right) => left.provider.localeCompare(right.provider)));
+      setIntegrationDraft({ provider: "GITHUB", displayName: "", externalRef: "", config: "{}" });
+    } catch (reason) {
+      setError(reason instanceof SyntaxError ? "Integration config must be valid JSON" : reason instanceof ApiClientError ? reason.message : "Integration could not be created");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function updateIntegrationStatus(integration: ProjectIntegration, status: IntegrationStatus) {
+    setAction(`integration-${integration.id}`);
+    setError("");
+    try {
+      const data = await api<{ integration: ProjectIntegration }>(`/integrations/${integration.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      setIntegrations((current) => current.map((item) => item.id === integration.id ? data.integration : item));
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Integration could not be updated");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function deleteIntegration(integration: ProjectIntegration) {
+    setAction(`integration-${integration.id}`);
+    setError("");
+    try {
+      await api(`/integrations/${integration.id}`, { method: "DELETE" });
+      setIntegrations((current) => current.filter((item) => item.id !== integration.id));
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Integration could not be deleted");
+    } finally {
+      setAction("");
+    }
+  }
+
   if (loading) return <div className="space-y-5"><div className="h-28 animate-pulse rounded-2xl bg-slate-200" /><div className="h-96 animate-pulse rounded-2xl bg-slate-200" /></div>;
   if (!project) return <ErrorNotice message={error || "Project was not found"} />;
 
@@ -700,6 +864,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <TabsTrigger value="sprints">Sprints <span className="ml-1 opacity-60">{sprints.length}</span></TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="collaboration">Collaboration</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requirements">
@@ -783,6 +948,18 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
         <TabsContent value="collaboration">
           <CollaborationPanel activity={activity} notifications={notifications} onMarkRead={markNotificationRead} />
+        </TabsContent>
+
+        <TabsContent value="integrations">
+          <IntegrationsPanel
+            integrations={integrations}
+            draft={integrationDraft}
+            loading={action}
+            onDraftChange={setIntegrationDraft}
+            onCreate={createIntegration}
+            onUpdateStatus={updateIntegrationStatus}
+            onDelete={deleteIntegration}
+          />
         </TabsContent>
       </Tabs>
     </div>
