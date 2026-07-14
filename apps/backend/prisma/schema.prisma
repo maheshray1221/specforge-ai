@@ -101,6 +101,17 @@ enum IntegrationStatus {
   ERROR
 }
 
+enum AnalyticsEventType {
+  USER_REGISTERED
+  PROJECT_CREATED
+  REQUIREMENT_CREATED
+  REQUIREMENT_ANALYZED
+  REQUIREMENT_APPROVED
+  TASKS_GENERATED
+  SPRINT_CREATED
+  ANALYSIS_FEEDBACK_SUBMITTED
+}
+
 model User {
   id             String            @id @default(uuid())
   name           String
@@ -117,6 +128,7 @@ model User {
   taskComments   TaskComment[]
   projectActivities ProjectActivity[]
   notifications  Notification[]
+  analyticsEvents AnalyticsEvent[]
   aiJobs          AIJob[]
 }
 
@@ -174,9 +186,27 @@ model Project {
   taskComments  TaskComment[]
   activities    ProjectActivity[]
   notifications Notification[]
+  analyticsEvents AnalyticsEvent[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId, status])
+}
+
+model AnalyticsEvent {
+  id        String             @id @default(uuid())
+  type      AnalyticsEventType
+  userId    String?
+  projectId String?
+  entityType String?
+  entityId   String?
+  metadata  Json               @default("{}")
+  createdAt DateTime           @default(now())
+  user      User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project   Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, type, createdAt])
+  @@index([userId, type, createdAt])
+  @@index([type, createdAt])
 }
 
 model ProjectIntegration {
