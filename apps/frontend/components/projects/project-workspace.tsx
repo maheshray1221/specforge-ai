@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
+  BarChart3,
   Braces,
   CheckCircle2,
   CircleDot,
@@ -14,6 +15,8 @@ import {
   RefreshCcw,
   Rocket,
   Sparkles,
+  ThumbsDown,
+  ThumbsUp,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
@@ -30,7 +33,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, apiText } from "@/lib/api";
-import type { AIAnalysis, Project, ProjectUsage, Requirement, Sprint, Task, TaskStatus } from "@/lib/types";
+import type { AIAnalysis, Project, ProjectAnalyticsSummary, ProjectUsage, Requirement, Sprint, Task, TaskStatus } from "@/lib/types";
 
 const taskColumns: Array<{ key: TaskStatus; label: string }> = [
   { key: "BACKLOG", label: "Backlog" },
@@ -134,6 +137,82 @@ function UsageQuotaCard({ usage }: { usage: ProjectUsage | null }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function AnalyticsSummaryCard({ analytics }: { analytics: ProjectAnalyticsSummary | null }) {
+  if (!analytics) return <EmptyState icon={BarChart3} title="No analytics yet" text="Product analytics will appear after users create requirements, run AI analysis, approve work and generate tasks." />;
+
+  const funnel = [
+    { label: "Projects", value: analytics.activationFunnel.projectCreated },
+    { label: "Requirements", value: analytics.activationFunnel.requirementCreated },
+    { label: "Analyzed", value: analytics.activationFunnel.requirementAnalyzed },
+    { label: "Approved", value: analytics.activationFunnel.requirementApproved },
+    { label: "Tasks generated", value: analytics.activationFunnel.tasksGenerated },
+    { label: "Sprints", value: analytics.activationFunnel.sprintCreated },
+  ];
+  const maxFunnelValue = Math.max(1, ...funnel.map((item) => item.value));
+  const eventRows = Object.entries(analytics.eventsByType).filter(([, count]) => count > 0);
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-sky-600" /> Activation funnel</CardTitle>
+          <CardDescription>Last {analytics.period.days} days, from {new Date(analytics.period.since).toLocaleDateString()} to {new Date(analytics.period.until).toLocaleDateString()}.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {funnel.map((item) => {
+              const percent = Math.round((item.value / maxFunnelValue) * 100);
+              return (
+                <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+                    <p className="text-xl font-bold text-slate-950">{formatNumber(item.value)}</p>
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+                    <div className="h-full rounded-full bg-sky-500" style={{ width: `${percent}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Tracked events</CardTitle>
+            <CardDescription>Only non-zero events are shown to keep the panel readable.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {eventRows.length === 0 ? <p className="text-sm text-slate-500">No tracked events in this period.</p> : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {eventRows.map(([type, count]) => (
+                  <div key={type} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{type.replaceAll("_", " ")}</p>
+                    <Badge>{formatNumber(count)}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>AI feedback</CardTitle>
+            <CardDescription>Feedback events help improve prompt quality without storing requirement content.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold text-slate-950">{formatNumber(analytics.aiFeedback.submitted)}</p>
+            <p className="mt-2 text-sm text-slate-500">feedback submissions</p>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
 
@@ -243,28 +322,32 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [usage, setUsage] = useState<ProjectUsage | null>(null);
+  const [analytics, setAnalytics] = useState<ProjectAnalyticsSummary | null>(null);
   const [selectedRequirementId, setSelectedRequirementId] = useState<string>("");
   const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<string>("");
   const [error, setError] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [projectData, requirementData, taskData, sprintData, usageData] = await Promise.all([
+      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData] = await Promise.all([
         api<{ project: Project }>(`/projects/${projectId}`),
         api<{ requirements: Requirement[] }>(`/projects/${projectId}/requirements`),
         api<{ tasks: Task[] }>(`/projects/${projectId}/tasks`),
         api<{ sprints: Sprint[] }>(`/projects/${projectId}/sprints`),
         api<ProjectUsage>(`/projects/${projectId}/usage`),
+        api<ProjectAnalyticsSummary>(`/projects/${projectId}/analytics/summary?days=30`),
       ]);
       setProject(projectData.project);
       setRequirements(requirementData.requirements);
       setTasks(taskData.tasks);
       setSprints(sprintData.sprints);
       setUsage(usageData);
+      setAnalytics(analyticsData);
       setSelectedRequirementId((current) => current || requirementData.requirements[0]?.id || "");
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "Project workspace could not be loaded");
@@ -409,6 +492,26 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  async function submitAnalysisFeedback(useful: boolean) {
+    if (!analysis) return;
+    setAction(useful ? "feedback-useful" : "feedback-not-useful");
+    setError("");
+    setFeedbackMessage("");
+    try {
+      await api(`/analyses/${analysis.id}/feedback`, {
+        method: "POST",
+        body: JSON.stringify({ useful }),
+      });
+      setFeedbackMessage(useful ? "Thanks — marked this AI output as useful." : "Thanks — marked this AI output for improvement.");
+      const refreshed = await api<ProjectAnalyticsSummary>(`/projects/${projectId}/analytics/summary?days=30`);
+      setAnalytics(refreshed);
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "AI feedback could not be saved");
+    } finally {
+      setAction("");
+    }
+  }
+
   if (loading) return <div className="space-y-5"><div className="h-28 animate-pulse rounded-2xl bg-slate-200" /><div className="h-96 animate-pulse rounded-2xl bg-slate-200" /></div>;
   if (!project) return <ErrorNotice message={error || "Project was not found"} />;
 
@@ -430,6 +533,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <TabsTrigger value="analysis">AI analysis</TabsTrigger>
           <TabsTrigger value="tasks">Tasks <span className="ml-1 opacity-60">{tasks.length}</span></TabsTrigger>
           <TabsTrigger value="sprints">Sprints <span className="ml-1 opacity-60">{sprints.length}</span></TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requirements">
@@ -448,6 +552,19 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               {selectedRequirement.status === "NEEDS_CLARIFICATION" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Resolve the required questions, update the requirement, then mark it ready before generating tasks.</div>}
               {selectedRequirement.status !== "APPROVED" && selectedRequirement.status !== "NEEDS_CLARIFICATION" && <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">Approve this requirement before generating tasks.</div>}
               <TelemetryGrid analysis={analysis} />
+              <Card>
+                <CardHeader>
+                  <CardTitle>AI output feedback</CardTitle>
+                  <CardDescription>Rate this output so analytics can guide prompt and schema improvements.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => submitAnalysisFeedback(true)} disabled={action.startsWith("feedback")}><ThumbsUp className="h-4 w-4" /> Useful</Button>
+                    <Button variant="outline" onClick={() => submitAnalysisFeedback(false)} disabled={action.startsWith("feedback")}><ThumbsDown className="h-4 w-4" /> Needs improvement</Button>
+                  </div>
+                  {feedbackMessage && <p className="mt-3 text-sm text-emerald-700">{feedbackMessage}</p>}
+                </CardContent>
+              </Card>
               <ClarificationAnswerCard analysis={analysis} requirement={selectedRequirement} loading={action === "clarifications"} onSubmit={saveClarificationAnswers} />
               <div className="grid gap-5 lg:grid-cols-2">
                 <Card><CardHeader><CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" /> Clarification questions</CardTitle></CardHeader><CardContent className="space-y-3">{analysis.clarificationQuestions?.length ? analysis.clarificationQuestions.map((question, index) => <div key={`${question.question}-${index}`} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start gap-2"><CircleDot className={`mt-1 h-3.5 w-3.5 ${question.required ? "text-rose-500" : "text-slate-400"}`} /><div><p className="text-sm font-medium">{question.question}</p><p className="mt-1 text-xs leading-5 text-slate-500">{question.reason}</p>{question.options.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{question.options.map((option) => <Badge key={option}>{option}</Badge>)}</div>}</div></div></div>) : <p className="text-sm text-slate-500">No blocking questions detected.</p>}</CardContent></Card>
@@ -492,6 +609,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
               })}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="analytics">
+          <AnalyticsSummaryCard analytics={analytics} />
         </TabsContent>
       </Tabs>
     </div>

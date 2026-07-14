@@ -393,6 +393,39 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
       return;
     }
 
+    if (path === `/projects/${createdProject.id}/analytics/summary` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            period: { since: "2026-07-01T00:00:00.000Z", until: "2026-07-31T23:59:59.999Z", days: 30 },
+            eventsByType: {
+              USER_REGISTERED: 1,
+              PROJECT_CREATED: 1,
+              REQUIREMENT_CREATED: currentRequirement ? 1 : 0,
+              REQUIREMENT_ANALYZED: currentAnalysis ? 1 : 0,
+              REQUIREMENT_APPROVED: currentRequirement?.status === "APPROVED" ? 1 : 0,
+              TASKS_GENERATED: tasks.length > 0 ? 1 : 0,
+              SPRINT_CREATED: 0,
+              ANALYSIS_FEEDBACK_SUBMITTED: 0,
+            },
+            activationFunnel: {
+              projectCreated: 1,
+              requirementCreated: currentRequirement ? 1 : 0,
+              requirementAnalyzed: currentAnalysis ? 1 : 0,
+              requirementApproved: currentRequirement?.status === "APPROVED" ? 1 : 0,
+              tasksGenerated: tasks.length > 0 ? 1 : 0,
+              sprintCreated: 0,
+            },
+            aiFeedback: { submitted: 0 },
+          },
+        }),
+      });
+      return;
+    }
+
     if (path === `/analyses/${completedAnalysis.id}/tasks/generate` && request.method() === "POST") {
       tasks = [generatedTask];
       currentAnalysis = currentAnalysis

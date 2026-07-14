@@ -40,6 +40,20 @@ export interface ProjectUsage {
   remaining: { aiJobs: number; totalTokens: number };
 }
 
+export interface ProjectAnalyticsSummary {
+  period: { since: string; until: string; days: number };
+  eventsByType: Record<string, number>;
+  activationFunnel: {
+    projectCreated: number;
+    requirementCreated: number;
+    requirementAnalyzed: number;
+    requirementApproved: number;
+    tasksGenerated: number;
+    sprintCreated: number;
+  };
+  aiFeedback: { submitted: number };
+}
+
 export interface RequirementVersion {
   id: string;
   versionNumber: number;
