@@ -182,9 +182,6 @@ Needs to scope client work quickly and create a credible delivery plan across se
 - Repeated generation reuses existing tasks unless the user explicitly regenerates them.
 - Regeneration replaces tasks belonging to that analysis while preserving unrelated project tasks.
 - Users can edit task planning fields and move tasks through the Kanban workflow.
-- Post-MVP tasks add assignee, due date, dependencies, comments, subtasks, attachments, activity history, and soft deletion.
-- Post-MVP may add a `BLOCKED` state while preserving the implemented `REVIEW` status name.
-- Post-MVP planning adds a table view, filters, dependency indicators, and bulk assignment, movement, and priority updates.
 
 **Acceptance criteria**
 
@@ -251,8 +248,7 @@ Needs to scope client work quickly and create a credible delivery plan across se
 - API availability target: 99.5% monthly for MVP production.
 - Database changes must use versioned migrations.
 - AI failures must be recoverable without duplicating completed artifacts.
-- Production data must be backed up daily with a documented restore procedure.
-- Before public launch, perform a restore drill against a temporary database and document recovery point and recovery time objectives.
+- Production data retention and recovery procedures remain future operational decisions outside the current roadmap scope.
 - List endpoints must use bounded pagination as data volume grows.
 
 ### Security and privacy
@@ -289,7 +285,7 @@ Needs to scope client work quickly and create a credible delivery plan across se
 - Component tests cover forms, dialogs, task cards, permission states, loading, and failures.
 - A critical end-to-end test covers register → project → requirement → mocked analysis → approval → task generation → sprint creation.
 - Every pull request must pass clean dependency installation, lint, type checking, tests, production builds, migration validation, and the critical end-to-end flow.
-- Development, staging, and production use separate databases, secrets, and provider credentials.
+- Development and production use separate databases, secrets, and provider credentials.
 - Production deployment applies committed migrations, deploys the backend, verifies health, then deploys the frontend; a failed health check triggers rollback.
 
 ## 10. Scope
@@ -363,7 +359,7 @@ Users can rate an analysis as useful or not useful and optionally report what wa
 - AI work runs synchronously in the MVP, which limits request duration and concurrent throughput.
 - The frontend depends on the REST API and cookie-based authentication being available on configured trusted origins.
 - The MVP requires Node.js 20.19 or newer.
-- Production readiness depends on a staging environment, error monitoring, uptime checks, managed backups, and verified HTTPS configuration.
+- Production readiness depends on error monitoring, uptime checks, and verified HTTPS configuration.
 
 ## 13. Risks and mitigations
 
@@ -386,7 +382,7 @@ The MVP is ready for production pilot when:
 - AI schema validation, failure, reuse, and forced-regeneration paths pass;
 - clarification gating cannot be bypassed through the UI or API;
 - sprint capacity, single-active-sprint, and completion constraints pass;
-- production secrets, HTTPS cookies, CORS origins, database backups, logs, and monitoring are configured;
+- production secrets, HTTPS cookies, CORS origins, logs, and monitoring are configured;
 - core flows pass an accessibility and responsive-layout review;
 - terms, privacy disclosure, AI-provider disclosure, and data deletion procedure are available;
 - backend-enforced AI rate and usage limits are configured;
@@ -410,7 +406,7 @@ Roadmap dates are planning targets, not external commitments. Work is reprioriti
 | Period | Priority | Target outcome |
 |---|---|---|
 | Days 1–15 | Stabilization and sessions | Reliable auth restore, actionable failures, persistent core flow, and repeatable smoke tests |
-| Days 16–30 | Tests, security, and monitoring | CI gates, authorization coverage, staging, error monitoring, backups, and restore verification |
+| Days 16–30 | Tests, security, and monitoring | CI gates, authorization coverage, error monitoring, health checks, and production configuration verification |
 | Days 31–45 | AI reliability | Background jobs, bounded retries, schema repair, prompt versioning, and usage telemetry |
 | Days 46–60 | Workflow and collaboration | Structured clarifications, approval, invitations, assignments, comments, activity, and deeper task/sprint controls |
 | Days 61–75 | Integrations and usage controls | PDF/CSV/JSON export, prioritized issue export, usage metering, backend quotas, and product analytics |
@@ -432,7 +428,6 @@ Roadmap dates are planning targets, not external commitments. Work is reprioriti
 - Add expiring, single-use workspace invitations for existing and new users.
 - Enforce owner, admin, member, and viewer permissions in backend services; hiding a control is never authorization.
 - Add task assignment, mentions, comments, activity timeline, and in-app notifications.
-- Add task detail editing, ownership, due dates, dependencies, blocked indicators, attachments, subtasks, filters, bulk operations, and audit history.
 - Add sprint cancellation, scope-change controls, velocity, carry-over, and burndown after the existing lifecycle is stable.
 
 ### 15.5 Exports and integrations
@@ -466,37 +461,29 @@ These features are required before broad public launch and should be implemented
 3. **Monitoring and operations**
    - Add frontend and backend exception monitoring, uptime checks, and alerting.
    - Track API latency, 5xx rate, auth failures, database connectivity, AI provider failures, queue depth, and quota exhaustion.
-   - Add operational runbooks for failed deployments, stuck jobs, provider outages, and database restore.
+   - Add operational runbooks for failed deployments, stuck jobs, provider outages, and database connectivity incidents.
 
-4. **Backups and staging**
-   - Configure managed backups and document a restore drill.
-   - Add a staging environment where migrations, CI, smoke tests, and core flows run before production changes.
-   - Release only when build, lint, typecheck, migration deploy, and E2E checks pass.
-
-5. **Exports and integrations**
+4. **Exports and integrations**
    - Export planning packages as PDF, task and sprint data as CSV, and analysis/task data as JSON.
    - Add GitHub Issues export first, then evaluate Jira/Linear and Slack/Teams based on beta feedback.
 
-6. **Collaboration**
+5. **Collaboration**
    - Add workspace invitations, project membership administration, task assignees, comments, mentions, activity feed, and notifications.
    - Preserve backend role enforcement for every collaboration action.
-
-7. **Task depth**
-   - Add due dates, dependencies, blocked state, subtasks, audit history, list view, filters, and bulk operations.
 
 ### 15.8 Private beta and public launch
 
 - Recruit 10–20 freelancers, small agencies, project managers, developers, and startup founders using real planning scenarios that comply with the data policy.
 - Observe where users abandon the flow, which questions help, what generated content they edit, whether estimates are credible, and which export saves meaningful time.
 - Private Beta v1 succeeds when authentication is stable, critical tests pass, errors are monitored, and at least 5–10 real users complete the requirement-to-sprint flow without developer assistance.
-- Public launch additionally requires verified backups and restore, authorization tests, usage controls, HTTPS and production domains, privacy and terms, support contact, and a passing core end-to-end flow.
+- Public launch additionally requires authorization tests, usage controls, HTTPS and production domains, privacy and terms, support contact, and a passing core end-to-end flow.
 
 ### 15.8 Operating principles
 
 - Stabilize before adding features; validate with users before monetizing; scale only after measuring a bottleneck.
 - AI output remains a draft until a human approves it.
 - Every feature includes loading, error, empty, and permission states.
-- Billing follows accurate usage metering, and public launch follows monitoring, restore drills, and critical automated tests.
+- Billing remains excluded; public launch follows monitoring and critical automated tests.
 
 ## 16. Open product decisions
 
@@ -506,4 +493,3 @@ These features are required before broad public launch and should be implemented
 4. What are the workspace-level AI usage limits and quota reset policy?
 5. Is project archiving sufficient, or is permanent deletion required for compliance?
 6. Based on beta demand, should GitHub Issues, Jira, or Linear be the first task integration?
-7. What RPO and RTO are appropriate for the first public beta environment?
