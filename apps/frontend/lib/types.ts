@@ -27,6 +27,19 @@ export interface Project {
   _count: { requirements: number; tasks: number; sprints: number };
 }
 
+export interface ProjectUsage {
+  period: { start: string; end: string };
+  usage: {
+    aiJobs: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    aiJobsByStatus: Record<string, number>;
+  };
+  quotas: { aiJobs: number; totalTokens: number };
+  remaining: { aiJobs: number; totalTokens: number };
+}
+
 export interface RequirementVersion {
   id: string;
   versionNumber: number;

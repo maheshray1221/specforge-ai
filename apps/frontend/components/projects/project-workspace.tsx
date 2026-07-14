@@ -30,7 +30,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, apiText } from "@/lib/api";
-import type { AIAnalysis, Project, Requirement, Sprint, Task, TaskStatus } from "@/lib/types";
+import type { AIAnalysis, Project, ProjectUsage, Requirement, Sprint, Task, TaskStatus } from "@/lib/types";
 
 const taskColumns: Array<{ key: TaskStatus; label: string }> = [
   { key: "BACKLOG", label: "Backlog" },
@@ -68,6 +68,73 @@ function formatDuration(milliseconds: number | null) {
 
 function formatNumber(value: number | null) {
   return value === null ? "—" : value.toLocaleString();
+}
+
+function formatPercent(used: number, quota: number) {
+  if (quota <= 0) return 0;
+  return Math.min(100, Math.round((used / quota) * 100));
+}
+
+function UsageQuotaCard({ usage }: { usage: ProjectUsage | null }) {
+  if (!usage) return null;
+
+  const periodStart = new Date(usage.period.start).toLocaleDateString();
+  const periodEnd = new Date(usage.period.end).toLocaleDateString();
+  const metrics = [
+    {
+      label: "AI jobs",
+      used: usage.usage.aiJobs,
+      remaining: usage.remaining.aiJobs,
+      quota: usage.quotas.aiJobs,
+      percent: formatPercent(usage.usage.aiJobs, usage.quotas.aiJobs),
+    },
+    {
+      label: "AI tokens",
+      used: usage.usage.totalTokens,
+      remaining: usage.remaining.totalTokens,
+      quota: usage.quotas.totalTokens,
+      percent: formatPercent(usage.usage.totalTokens, usage.quotas.totalTokens),
+    },
+  ];
+
+  return (
+    <Card className="mt-5">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-violet-600" /> Usage & quotas</CardTitle>
+        <CardDescription>Current monthly AI usage window: {periodStart} to {periodEnd}.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4 md:grid-cols-2">
+          {metrics.map((metric) => (
+            <div key={metric.label} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{metric.label}</p>
+                  <p className="mt-1 text-xs text-slate-500">{formatNumber(metric.remaining)} remaining</p>
+                </div>
+                <Badge>{metric.percent}% used</Badge>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+                <div className="h-full rounded-full bg-violet-500" style={{ width: `${metric.percent}%` }} />
+              </div>
+              <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                <span>{formatNumber(metric.used)} used</span>
+                <span>{formatNumber(metric.quota)} quota</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(usage.usage.aiJobsByStatus).map(([status, count]) => (
+            <div key={status} className="rounded-xl bg-white p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{status.replaceAll("_", " ")}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{formatNumber(count)}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function TelemetryGrid({ analysis }: { analysis: AIAnalysis }) {
@@ -175,6 +242,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [usage, setUsage] = useState<ProjectUsage | null>(null);
   const [selectedRequirementId, setSelectedRequirementId] = useState<string>("");
   const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,16 +253,18 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     setLoading(true);
     setError("");
     try {
-      const [projectData, requirementData, taskData, sprintData] = await Promise.all([
+      const [projectData, requirementData, taskData, sprintData, usageData] = await Promise.all([
         api<{ project: Project }>(`/projects/${projectId}`),
         api<{ requirements: Requirement[] }>(`/projects/${projectId}/requirements`),
         api<{ tasks: Task[] }>(`/projects/${projectId}/tasks`),
         api<{ sprints: Sprint[] }>(`/projects/${projectId}/sprints`),
+        api<ProjectUsage>(`/projects/${projectId}/usage`),
       ]);
       setProject(projectData.project);
       setRequirements(requirementData.requirements);
       setTasks(taskData.tasks);
       setSprints(sprintData.sprints);
+      setUsage(usageData);
       setSelectedRequirementId((current) => current || requirementData.requirements[0]?.id || "");
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "Project workspace could not be loaded");
@@ -351,6 +421,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       </div>
 
       <div className="mt-5"><ErrorNotice message={error} /></div>
+
+      <UsageQuotaCard usage={usage} />
 
       <Tabs defaultValue="requirements">
         <TabsList>

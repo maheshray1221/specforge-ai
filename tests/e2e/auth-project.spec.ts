@@ -365,6 +365,34 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
       return;
     }
 
+    if (path === `/projects/${createdProject.id}/usage` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            period: { start: "2026-07-01T00:00:00.000Z", end: "2026-07-31T23:59:59.999Z" },
+            usage: {
+              aiJobs: currentAnalysis ? 1 : 0,
+              promptTokens: currentAnalysis?.promptTokens ?? 0,
+              completionTokens: currentAnalysis?.completionTokens ?? 0,
+              totalTokens: currentAnalysis?.totalTokens ?? 0,
+              aiJobsByStatus: {
+                QUEUED: 0,
+                PROCESSING: 0,
+                COMPLETED: currentAnalysis ? 1 : 0,
+                FAILED: 0,
+              },
+            },
+            quotas: { aiJobs: 100, totalTokens: 100000 },
+            remaining: { aiJobs: currentAnalysis ? 99 : 100, totalTokens: 100000 - (currentAnalysis?.totalTokens ?? 0) },
+          },
+        }),
+      });
+      return;
+    }
+
     if (path === `/analyses/${completedAnalysis.id}/tasks/generate` && request.method() === "POST") {
       tasks = [generatedTask];
       currentAnalysis = currentAnalysis
