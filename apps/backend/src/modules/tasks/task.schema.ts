@@ -35,6 +35,7 @@ export const updateTaskSchema = z.object({
     storyPoints: z.number().int().min(1).max(13).nullable().optional(),
     labels: z.array(z.string().trim().min(1).max(30)).max(20).optional(),
     sprintId: z.string().uuid().nullable().optional(),
+    assigneeId: z.string().uuid().nullable().optional(),
   }).refine((value) => Object.keys(value).length > 0, "At least one field is required"),
 });
 

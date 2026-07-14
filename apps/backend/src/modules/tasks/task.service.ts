@@ -20,6 +20,7 @@ const taskSelect = {
   requirementId: true,
   analysisId: true,
   sprintId: true,
+  assigneeId: true,
   title: true,
   description: true,
   type: true,
@@ -32,6 +33,7 @@ const taskSelect = {
   createdAt: true,
   updatedAt: true,
   sprint: { select: { id: true, name: true, status: true } },
+  assignee: { select: { id: true, name: true, email: true } },
 } as const;
 
 const normalizeLabels = (labels: string[]) => [...new Set(labels.map((label) => label.trim().toLowerCase()).filter(Boolean))].slice(0, 20);
@@ -301,6 +303,16 @@ export async function updateTask(userId: string, taskId: string, input: UpdateTa
     const sprint = await prisma.sprint.findFirst({ where: { id: input.sprintId, projectId: task.projectId }, select: { id: true } });
     if (!sprint) throw new ApiError(422, "Sprint must belong to the same project");
   }
+  if (input.assigneeId) {
+    const assignee = await prisma.workspaceMember.findFirst({
+      where: {
+        userId: input.assigneeId,
+        workspace: { projects: { some: { id: task.projectId } } },
+      },
+      select: { id: true },
+    });
+    if (!assignee) throw new ApiError(422, "Assignee must belong to the project workspace");
+  }
   const data: Prisma.TaskUpdateInput = {
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
@@ -310,6 +322,33 @@ export async function updateTask(userId: string, taskId: string, input: UpdateTa
     ...(input.storyPoints !== undefined ? { storyPoints: input.storyPoints } : {}),
     ...(input.labels !== undefined ? { labels: normalizeLabels(input.labels) } : {}),
     ...(input.sprintId !== undefined ? { sprint: input.sprintId ? { connect: { id: input.sprintId } } : { disconnect: true } } : {}),
+    ...(input.assigneeId !== undefined ? { assignee: input.assigneeId ? { connect: { id: input.assigneeId } } : { disconnect: true } } : {}),
   };
-  return prisma.task.update({ where: { id: taskId }, data, select: taskSelect });
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.task.update({ where: { id: taskId }, data, select: taskSelect });
+    if (input.assigneeId !== undefined) {
+      await tx.projectActivity.create({
+        data: {
+          projectId: task.projectId,
+          actorId: userId,
+          action: input.assigneeId ? "TASK_ASSIGNED" : "TASK_UNASSIGNED",
+          entityType: "TASK",
+          entityId: taskId,
+          metadata: { assigneeId: input.assigneeId },
+        },
+      });
+      if (input.assigneeId && input.assigneeId !== userId) {
+        await tx.notification.create({
+          data: {
+            userId: input.assigneeId,
+            projectId: task.projectId,
+            title: "You were assigned a task",
+            body: updated.title,
+            metadata: { taskId },
+          },
+        });
+      }
+    }
+    return updated;
+  });
 }
