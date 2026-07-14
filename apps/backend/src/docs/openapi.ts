@@ -8,7 +8,7 @@ export const openApiDocument = {
   servers: [{ url: "/api/v1" }],
   tags: [
     { name: "Operations" }, { name: "Auth" }, { name: "Projects" }, { name: "Requirements" },
-    { name: "AI Analysis" }, { name: "AI Jobs" }, { name: "Tasks" }, { name: "Sprints" }, { name: "Usage" }, { name: "Exports" },
+    { name: "AI Analysis" }, { name: "AI Jobs" }, { name: "Tasks" }, { name: "Sprints" }, { name: "Usage" }, { name: "Exports" }, { name: "Integrations" },
   ],
   components: {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
@@ -41,6 +41,14 @@ export const openApiDocument = {
     "/projects/{projectId}/tasks": { get: { tags: ["Tasks"], summary: "List project tasks", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }, { in: "query", name: "status", schema: { type: "string" } }, { in: "query", name: "type", schema: { type: "string" } }, { in: "query", name: "priority", schema: { type: "string" } }, { in: "query", name: "sprintId", schema: { type: "string", format: "uuid" } }, { in: "query", name: "search", schema: { type: "string" } }, { in: "query", name: "page", schema: { type: "integer", minimum: 1 } }, { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "Tasks" } } } },
     "/projects/{projectId}/usage": { get: { tags: ["Usage"], summary: "Get project monthly usage and quotas", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Usage summary" } } } },
     "/projects/{projectId}/exports/tasks.csv": { get: { tags: ["Exports"], summary: "Export project tasks as CSV", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }, { in: "query", name: "status", schema: { type: "string" } }, { in: "query", name: "type", schema: { type: "string" } }, { in: "query", name: "priority", schema: { type: "string" } }, { in: "query", name: "sprintId", schema: { type: "string", format: "uuid" } }, { in: "query", name: "search", schema: { type: "string" } }], responses: { "200": { description: "CSV file" } } } },
+    "/projects/{projectId}/integrations": {
+      get: { tags: ["Integrations"], summary: "List project integrations", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }, { in: "query", name: "provider", schema: { type: "string" } }, { in: "query", name: "status", schema: { type: "string" } }], responses: { "200": { description: "Integrations" } } },
+      post: { tags: ["Integrations"], summary: "Create project integration", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "201": { description: "Integration created" } } },
+    },
+    "/integrations/{integrationId}": {
+      patch: { tags: ["Integrations"], summary: "Update integration", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "integrationId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Integration updated" } } },
+      delete: { tags: ["Integrations"], summary: "Delete integration", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "integrationId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "204": { description: "Integration deleted" } } },
+    },
     "/projects/{projectId}/sprints": {
       post: { tags: ["Sprints"], summary: "Create sprint", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "201": { description: "Created" } } },
       get: { tags: ["Sprints"], summary: "List sprints", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Sprints" } } },

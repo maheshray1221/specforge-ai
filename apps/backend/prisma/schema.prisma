@@ -87,6 +87,20 @@ enum SprintStatus {
   COMPLETED
 }
 
+enum IntegrationProvider {
+  GITHUB
+  JIRA
+  LINEAR
+  SLACK
+  WEBHOOK
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  PAUSED
+  ERROR
+}
+
 model User {
   id             String            @id @default(uuid())
   name           String
@@ -152,9 +166,28 @@ model Project {
   tasks         Task[]
   sprints       Sprint[]
   aiJobs        AIJob[]
+  integrations  ProjectIntegration[]
 
   @@unique([workspaceId, key])
   @@index([workspaceId, status])
+}
+
+model ProjectIntegration {
+  id             String              @id @default(uuid())
+  projectId      String
+  provider       IntegrationProvider
+  status         IntegrationStatus   @default(CONNECTED)
+  displayName    String
+  externalRef    String?
+  config         Json                @default("{}")
+  lastSyncedAt   DateTime?
+  lastError      String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, provider, displayName])
+  @@index([projectId, provider, status])
 }
 
 model Requirement {
