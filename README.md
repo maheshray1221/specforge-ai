@@ -139,6 +139,32 @@ COOKIE_SECURE=false
 
 For production, set `NODE_ENV=production`, use HTTPS, use a managed PostgreSQL URL, and set `FRONTEND_URL` to the deployed frontend origin. Auth cookies are configured as `Secure` + `SameSite=None` automatically in production and `SameSite=Lax` locally.
 
+## Deployment readiness
+
+Before a staging or production deployment, run the release gate:
+
+```powershell
+npm ci
+npm run db:generate
+npm run release:check
+```
+
+After deploying the backend, verify liveness and readiness:
+
+```powershell
+$env:BACKEND_URL="https://api.example.com/api/v1"
+npm run deploy:smoke
+```
+
+After deploying the frontend too:
+
+```powershell
+$env:FRONTEND_URL="https://app.example.com"
+npm run deploy:smoke
+```
+
+See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the full deployment runbook, required environment values, rollback steps, backup/restore drill, and manual pilot smoke flow.
+
 ## API overview
 
 ```text
