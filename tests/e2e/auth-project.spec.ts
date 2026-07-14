@@ -426,6 +426,51 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
       return;
     }
 
+    if (path === `/projects/${createdProject.id}/activity` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            activity: tasks.length > 0 ? [{
+              id: "550e8400-e29b-41d4-a716-446655440099",
+              projectId: createdProject.id,
+              action: "TASK_COMMENTED",
+              entityType: "TASK",
+              entityId: generatedTask.id,
+              metadata: { taskTitle: generatedTask.title },
+              createdAt: "2026-07-12T00:00:00.000Z",
+              actor: { id: user.id, name: user.name, email: user.email },
+            }] : [],
+          },
+        }),
+      });
+      return;
+    }
+
+    if (path === "/notifications" && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            notifications: [{
+              id: "550e8400-e29b-41d4-a716-446655440098",
+              projectId: createdProject.id,
+              title: "Task generated",
+              body: "Your AI-generated task backlog is ready.",
+              readAt: null,
+              metadata: {},
+              createdAt: "2026-07-12T00:00:00.000Z",
+            }],
+          },
+        }),
+      });
+      return;
+    }
+
     if (path === `/analyses/${completedAnalysis.id}/tasks/generate` && request.method() === "POST") {
       tasks = [generatedTask];
       currentAnalysis = currentAnalysis

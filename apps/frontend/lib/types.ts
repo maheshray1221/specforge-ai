@@ -54,6 +54,37 @@ export interface ProjectAnalyticsSummary {
   aiFeedback: { submitted: number };
 }
 
+export interface ProjectActivity {
+  id: string;
+  projectId: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  actor: { id: string; name: string; email: string };
+}
+
+export interface Notification {
+  id: string;
+  projectId: string | null;
+  title: string;
+  body: string | null;
+  readAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  projectId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  author: { id: string; name: string; email: string };
+}
+
 export interface RequirementVersion {
   id: string;
   versionNumber: number;

@@ -8,10 +8,12 @@ import {
   Braces,
   CheckCircle2,
   CircleDot,
+  MessageSquare,
   Database,
   Download,
   FileText,
   ListChecks,
+  Bell,
   RefreshCcw,
   Rocket,
   Sparkles,
@@ -33,7 +35,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, apiText } from "@/lib/api";
-import type { AIAnalysis, Project, ProjectAnalyticsSummary, ProjectUsage, Requirement, Sprint, Task, TaskStatus } from "@/lib/types";
+import type { AIAnalysis, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus } from "@/lib/types";
 
 const taskColumns: Array<{ key: TaskStatus; label: string }> = [
   { key: "BACKLOG", label: "Backlog" },
@@ -216,6 +218,113 @@ function AnalyticsSummaryCard({ analytics }: { analytics: ProjectAnalyticsSummar
   );
 }
 
+function CollaborationPanel({
+  activity,
+  notifications,
+  onMarkRead,
+}: {
+  activity: ProjectActivity[];
+  notifications: Notification[];
+  onMarkRead: (notificationId: string) => Promise<void>;
+}) {
+  const unread = notifications.filter((notification) => !notification.readAt);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-sky-600" /> Project activity</CardTitle>
+            <CardDescription>Recent collaboration events across tasks, comments and workflow changes.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {activity.length === 0 ? <p className="text-sm text-slate-500">No activity recorded yet.</p> : (
+              <div className="space-y-3">
+                {activity.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{item.action.replaceAll("_", " ")}</p>
+                        <p className="mt-1 text-xs text-slate-500">By {item.actor.name} · {item.entityType.toLowerCase()}</p>
+                      </div>
+                      <Badge>{new Date(item.createdAt).toLocaleString()}</Badge>
+                    </div>
+                    {typeof item.metadata.taskTitle === "string" && <p className="mt-3 text-sm text-slate-600">{item.metadata.taskTitle}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Bell className="h-4 w-4 text-violet-600" /> Notifications</CardTitle>
+            <CardDescription>{unread.length} unread notification{unread.length === 1 ? "" : "s"}.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {notifications.length === 0 ? <p className="text-sm text-slate-500">No notifications yet.</p> : (
+              <div className="space-y-3">
+                {notifications.map((notification) => (
+                  <div key={notification.id} className={`rounded-2xl border p-4 ${notification.readAt ? "border-slate-200 bg-white" : "border-violet-200 bg-violet-50/60"}`}>
+                    <p className="text-sm font-semibold text-slate-900">{notification.title}</p>
+                    {notification.body && <p className="mt-1 text-xs leading-5 text-slate-500">{notification.body}</p>}
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <span className="text-xs text-slate-500">{new Date(notification.createdAt).toLocaleString()}</span>
+                      {!notification.readAt && <Button size="sm" variant="outline" onClick={() => onMarkRead(notification.id)}>Mark read</Button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function TaskCommentsPanel({
+  task,
+  comments,
+  draft,
+  loading,
+  onDraftChange,
+  onSubmit,
+}: {
+  task: Task;
+  comments: TaskComment[];
+  draft: string;
+  loading: boolean;
+  onDraftChange: (value: string) => void;
+  onSubmit: () => Promise<void>;
+}) {
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="space-y-2">
+        {comments.length === 0 ? <p className="text-xs text-slate-500">No comments yet.</p> : comments.map((comment) => (
+          <div key={comment.id} className="rounded-lg bg-white p-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold text-slate-700">{comment.author.name}</p>
+              <span className="text-[10px] text-slate-400">{new Date(comment.createdAt).toLocaleString()}</span>
+            </div>
+            <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600">{comment.body}</p>
+          </div>
+        ))}
+      </div>
+      <Textarea
+        className="mt-3 min-h-20 bg-white text-xs"
+        value={draft}
+        onChange={(event) => onDraftChange(event.target.value)}
+        placeholder={`Comment on "${task.title}"...`}
+      />
+      <Button size="sm" className="mt-2" disabled={loading || !draft.trim()} onClick={() => void onSubmit()}>
+        {loading ? <><Spinner /> Posting</> : "Post comment"}
+      </Button>
+    </div>
+  );
+}
+
 function TelemetryGrid({ analysis }: { analysis: AIAnalysis }) {
   const items = [
     { label: "Analysis attempts", value: analysis.attempts.toString() },
@@ -323,6 +432,11 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [usage, setUsage] = useState<ProjectUsage | null>(null);
   const [analytics, setAnalytics] = useState<ProjectAnalyticsSummary | null>(null);
+  const [activity, setActivity] = useState<ProjectActivity[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [openCommentsTaskId, setOpenCommentsTaskId] = useState<string>("");
+  const [commentsByTask, setCommentsByTask] = useState<Record<string, TaskComment[]>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [selectedRequirementId, setSelectedRequirementId] = useState<string>("");
   const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
@@ -334,13 +448,15 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     setLoading(true);
     setError("");
     try {
-      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData] = await Promise.all([
+      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData, activityData, notificationData] = await Promise.all([
         api<{ project: Project }>(`/projects/${projectId}`),
         api<{ requirements: Requirement[] }>(`/projects/${projectId}/requirements`),
         api<{ tasks: Task[] }>(`/projects/${projectId}/tasks`),
         api<{ sprints: Sprint[] }>(`/projects/${projectId}/sprints`),
         api<ProjectUsage>(`/projects/${projectId}/usage`),
         api<ProjectAnalyticsSummary>(`/projects/${projectId}/analytics/summary?days=30`),
+        api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`),
+        api<{ notifications: Notification[] }>("/notifications?limit=10"),
       ]);
       setProject(projectData.project);
       setRequirements(requirementData.requirements);
@@ -348,6 +464,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       setSprints(sprintData.sprints);
       setUsage(usageData);
       setAnalytics(analyticsData);
+      setActivity(activityData.activity);
+      setNotifications(notificationData.notifications);
       setSelectedRequirementId((current) => current || requirementData.requirements[0]?.id || "");
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "Project workspace could not be loaded");
@@ -512,6 +630,53 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  async function toggleTaskComments(taskId: string) {
+    const nextTaskId = openCommentsTaskId === taskId ? "" : taskId;
+    setOpenCommentsTaskId(nextTaskId);
+    if (!nextTaskId || commentsByTask[taskId]) return;
+    setAction(`comments-${taskId}`);
+    setError("");
+    try {
+      const data = await api<{ comments: TaskComment[] }>(`/tasks/${taskId}/comments`);
+      setCommentsByTask((current) => ({ ...current, [taskId]: data.comments }));
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Task comments could not be loaded");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function postTaskComment(taskId: string) {
+    const body = commentDrafts[taskId]?.trim();
+    if (!body) return;
+    setAction(`comment-post-${taskId}`);
+    setError("");
+    try {
+      const data = await api<{ comment: TaskComment }>(`/tasks/${taskId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      });
+      setCommentsByTask((current) => ({ ...current, [taskId]: [...(current[taskId] ?? []), data.comment] }));
+      setCommentDrafts((current) => ({ ...current, [taskId]: "" }));
+      const refreshed = await api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`);
+      setActivity(refreshed.activity);
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Task comment could not be posted");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function markNotificationRead(notificationId: string) {
+    setError("");
+    try {
+      const data = await api<{ notification: Notification }>(`/notifications/${notificationId}/read`, { method: "PATCH" });
+      setNotifications((current) => current.map((notification) => notification.id === notificationId ? data.notification : notification));
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Notification could not be updated");
+    }
+  }
+
   if (loading) return <div className="space-y-5"><div className="h-28 animate-pulse rounded-2xl bg-slate-200" /><div className="h-96 animate-pulse rounded-2xl bg-slate-200" /></div>;
   if (!project) return <ErrorNotice message={error || "Project was not found"} />;
 
@@ -534,6 +699,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <TabsTrigger value="tasks">Tasks <span className="ml-1 opacity-60">{tasks.length}</span></TabsTrigger>
           <TabsTrigger value="sprints">Sprints <span className="ml-1 opacity-60">{sprints.length}</span></TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="collaboration">Collaboration</TabsTrigger>
         </TabsList>
 
         <TabsContent value="requirements">
@@ -579,7 +745,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
         <TabsContent value="tasks">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold">Engineering backlog</h2><p className="mt-1 text-sm text-slate-500">Move tasks through the workflow and assign them to a sprint.</p>{selectedRequirement && selectedRequirement.status !== "APPROVED" && <p className="mt-1 text-xs text-amber-700">Approve the selected requirement before generating tasks.</p>}</div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void exportTasksCsv()} disabled={tasks.length === 0}><Download className="h-4 w-4" /> Export CSV</Button>{analysis && <Button variant="outline" onClick={() => generateTasks(tasks.some((task) => task.analysisId === analysis.id))} disabled={action === "tasks" || selectedRequirement?.status !== "APPROVED"}>{action === "tasks" && <Spinner />} {tasks.some((task) => task.analysisId === analysis.id) ? "Regenerate tasks" : "Generate tasks"}</Button>}</div></div>
-          {tasks.length === 0 ? <EmptyState icon={ListChecks} title="No tasks generated" text="Analyze a requirement and generate a development-ready backlog." /> : <div className="overflow-x-auto pb-3"><div className="grid min-w-[1100px] grid-cols-5 gap-3">{taskColumns.map((column) => <div key={column.key} className="rounded-2xl bg-slate-100/80 p-3"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{column.label}</h3><Badge>{groupedTasks[column.key].length}</Badge></div><div className="space-y-3">{groupedTasks[column.key].map((task) => <motion.div layout key={task.id}><Card className="p-3.5"><div className="flex items-start justify-between gap-2"><Badge>{task.type}</Badge><Badge className={priorityClass[task.priority]}>{task.priority}</Badge></div><h4 className="mt-3 text-sm font-semibold leading-5">{task.title}</h4><p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{task.description}</p><div className="mt-2"><EditTaskDialog task={task} onUpdated={(updated) => setTasks((current) => current.map((item) => item.id === updated.id ? updated : item))} /></div><div className="mt-3 flex flex-wrap gap-1">{task.labels.slice(0, 3).map((label) => <span key={label} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{label}</span>)}</div><div className="mt-4 grid gap-2"><select aria-label="Task status" value={task.status} onChange={(event) => void updateTaskStatus(task, event.target.value as TaskStatus)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none">{taskColumns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select><select aria-label="Sprint assignment" value={task.sprintId ?? ""} onChange={(event) => void assignSprint(task, event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none"><option value="">No sprint</option>{sprints.filter((sprint) => sprint.status !== "COMPLETED").map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}</select></div><div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500"><span>{task.storyPoints ?? "—"} points</span><span>{task.sprint?.name ?? "Backlog"}</span></div></Card></motion.div>)}</div></div>)}</div></div>}
+          {tasks.length === 0 ? <EmptyState icon={ListChecks} title="No tasks generated" text="Analyze a requirement and generate a development-ready backlog." /> : <div className="overflow-x-auto pb-3"><div className="grid min-w-[1100px] grid-cols-5 gap-3">{taskColumns.map((column) => <div key={column.key} className="rounded-2xl bg-slate-100/80 p-3"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{column.label}</h3><Badge>{groupedTasks[column.key].length}</Badge></div><div className="space-y-3">{groupedTasks[column.key].map((task) => <motion.div layout key={task.id}><Card className="p-3.5"><div className="flex items-start justify-between gap-2"><Badge>{task.type}</Badge><Badge className={priorityClass[task.priority]}>{task.priority}</Badge></div><h4 className="mt-3 text-sm font-semibold leading-5">{task.title}</h4><p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{task.description}</p><div className="mt-2 flex flex-wrap gap-2"><EditTaskDialog task={task} onUpdated={(updated) => setTasks((current) => current.map((item) => item.id === updated.id ? updated : item))} /><Button size="sm" variant="outline" onClick={() => void toggleTaskComments(task.id)}><MessageSquare className="h-3.5 w-3.5" /> Comments</Button></div><div className="mt-3 flex flex-wrap gap-1">{task.labels.slice(0, 3).map((label) => <span key={label} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{label}</span>)}</div><div className="mt-4 grid gap-2"><select aria-label="Task status" value={task.status} onChange={(event) => void updateTaskStatus(task, event.target.value as TaskStatus)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none">{taskColumns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select><select aria-label="Sprint assignment" value={task.sprintId ?? ""} onChange={(event) => void assignSprint(task, event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none"><option value="">No sprint</option>{sprints.filter((sprint) => sprint.status !== "COMPLETED").map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}</select></div>{openCommentsTaskId === task.id && <TaskCommentsPanel task={task} comments={commentsByTask[task.id] ?? []} draft={commentDrafts[task.id] ?? ""} loading={action === `comment-post-${task.id}` || action === `comments-${task.id}`} onDraftChange={(value) => setCommentDrafts((current) => ({ ...current, [task.id]: value }))} onSubmit={() => postTaskComment(task.id)} />}<div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500"><span>{task.storyPoints ?? "—"} points</span><span>{task.sprint?.name ?? "Backlog"}</span></div></Card></motion.div>)}</div></div>)}</div></div>}
         </TabsContent>
 
         <TabsContent value="sprints">
@@ -613,6 +779,10 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
         <TabsContent value="analytics">
           <AnalyticsSummaryCard analytics={analytics} />
+        </TabsContent>
+
+        <TabsContent value="collaboration">
+          <CollaborationPanel activity={activity} notifications={notifications} onMarkRead={markNotificationRead} />
         </TabsContent>
       </Tabs>
     </div>
