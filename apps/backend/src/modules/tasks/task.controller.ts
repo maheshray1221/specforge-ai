@@ -7,7 +7,7 @@ export const generate: RequestHandler = async (req, res) =>
     success: true,
     data: await service.generateTasks(
       req.user!.id,
-      getRouteParam(req.params, "analysisId"),
+      getRouteParam(req.params.analysisId, "analysisId"),
       req.body.regenerate,
     ),
   });
@@ -17,7 +17,7 @@ export const list: RequestHandler = async (req, res) =>
     data: {
       tasks: await service.listProjectTasks(
         req.user!.id,
-        getRouteParam(req.params, "projectId"),
+        getRouteParam(req.params.projectId, "projectId"),
         req.query as never,
       ),
     },
@@ -28,7 +28,7 @@ export const update: RequestHandler = async (req, res) =>
     data: {
       task: await service.updateTask(
         req.user!.id,
-        getRouteParam(req.params, "taskId"),
+        getRouteParam(req.params.taskId, "taskId"),
         req.body,
       ),
     },
