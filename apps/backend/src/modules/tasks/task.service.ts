@@ -1,9 +1,10 @@
-import { AnalysisStatus, ProjectStatus, RequirementStatus, TaskStatus } from "@prisma/client";
+import { AIJobType, AnalysisStatus, ProjectStatus, RequirementStatus, TaskStatus } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { generateStructuredOutput } from "../../lib/ai/groq.client.js";
 import { extractAIErrorTelemetry } from "../../lib/ai/telemetry.js";
 import { ApiError } from "../../utils/api-error.js";
+import { completeAIJob, createAIJob, failAIJob } from "../ai-jobs/ai-job.service.js";
 import { aiAnalysisOutputSchema } from "../ai-analysis/ai-analysis.output.js";
 import { WRITE_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
 import { taskGeneratorJsonSchema, taskGeneratorOutputSchema } from "./task-generator.output.js";
@@ -73,6 +74,18 @@ export async function generateTasks(userId: string, analysisId: string, regenera
     if (locked) throw new ApiError(409, "Tasks cannot be regenerated after sprint planning or work has started");
   }
 
+  const job = await createAIJob({
+    type: AIJobType.TASK_GENERATION,
+    userId,
+    projectId: analysis.requirement.project.id,
+    requirementId: analysis.requirement.id,
+    analysisId,
+    idempotencyKey: `${analysisId}:${regenerate ? "regenerate" : "generate"}`,
+    provider: "groq",
+    model: "task-generator",
+    promptSchemaVersion: "task-backlog:v1",
+  });
+
   let result: Awaited<ReturnType<typeof generateStructuredOutput<typeof taskGeneratorOutputSchema._output>>>;
 
   try {
@@ -97,6 +110,12 @@ export async function generateTasks(userId: string, analysisId: string, regenera
         taskGenerationErrorCategory: telemetry.errorCategory,
         taskGenerationErrorMessage: telemetry.message,
       },
+    });
+    await failAIJob(job.id, {
+      attempts: telemetry.attempts,
+      durationMs: telemetry.durationMs ?? null,
+      errorCategory: telemetry.errorCategory,
+      errorMessage: telemetry.message,
     });
 
     throw error;
@@ -134,6 +153,14 @@ export async function generateTasks(userId: string, analysisId: string, regenera
         taskGenerationErrorMessage: null,
       },
     });
+  });
+  await completeAIJob(job.id, {
+    attempts: result.telemetry.attempts,
+    durationMs: result.telemetry.durationMs,
+    promptTokens: result.usage?.prompt_tokens ?? null,
+    completionTokens: result.usage?.completion_tokens ?? null,
+    totalTokens: result.usage?.total_tokens ?? null,
+    outputRef: analysisId,
   });
 
   const tasks = await prisma.task.findMany({ where: { analysisId }, select: taskSelect, orderBy: { position: "asc" } });
