@@ -15,6 +15,10 @@ interface CreateAIJobInput {
   promptSchemaVersion?: string;
 }
 
+interface EnqueueAIJobInput extends CreateAIJobInput {
+  maxAttempts?: number;
+}
+
 interface CompleteAIJobInput {
   attempts: number;
   durationMs: number;
@@ -95,8 +99,8 @@ export async function listProjectAIJobs(userId: string, projectId: string, filte
   });
 }
 
-export async function createAIJob(input: CreateAIJobInput) {
-  const job = await prisma.aIJob.upsert({
+export async function enqueueAIJob(input: EnqueueAIJobInput) {
+  return prisma.aIJob.upsert({
     where: {
       type_idempotencyKey: {
         type: input.type,
@@ -113,22 +117,31 @@ export async function createAIJob(input: CreateAIJobInput) {
       provider: input.provider ?? null,
       model: input.model ?? null,
       promptSchemaVersion: input.promptSchemaVersion ?? null,
+      maxAttempts: input.maxAttempts ?? 3,
       status: AIJobStatus.QUEUED,
     },
     update: {},
     select,
   });
+}
 
+export async function markAIJobRunning(jobId: string) {
   return prisma.aIJob.update({
-    where: { id: job.id },
+    where: { id: jobId },
     data: {
       status: AIJobStatus.RUNNING,
       startedAt: new Date(),
+      completedAt: null,
       errorCategory: null,
       errorMessage: null,
     },
     select,
   });
+}
+
+export async function createAIJob(input: CreateAIJobInput) {
+  const job = await enqueueAIJob(input);
+  return markAIJobRunning(job.id);
 }
 
 export async function completeAIJob(jobId: string, input: CompleteAIJobInput) {
