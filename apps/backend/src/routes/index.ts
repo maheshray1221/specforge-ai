@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authRouter } from "../modules/auth/auth.route.js";
 import { aiAnalysisRouter } from "../modules/ai-analysis/ai-analysis.route.js";
+import { aiJobRouter } from "../modules/ai-jobs/ai-job.route.js";
 import { projectRouter } from "../modules/projects/project.route.js";
 import { projectRequirementRouter, requirementRouter } from "../modules/requirements/requirement.route.js";
 import { sprintRouter } from "../modules/sprints/sprint.route.js";
@@ -13,5 +14,6 @@ apiRouter.use("/projects", projectRouter);
 apiRouter.use("/projects/:projectId/requirements", projectRequirementRouter);
 apiRouter.use("/requirements", requirementRouter);
 apiRouter.use(aiAnalysisRouter);
+apiRouter.use(aiJobRouter);
 apiRouter.use(taskRouter);
 apiRouter.use(sprintRouter);
