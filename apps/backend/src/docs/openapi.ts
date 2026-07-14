@@ -7,7 +7,7 @@ export const openApiDocument = {
   },
   servers: [{ url: "/api/v1" }],
   tags: [
-    { name: "Auth" }, { name: "Projects" }, { name: "Requirements" },
+    { name: "Operations" }, { name: "Auth" }, { name: "Projects" }, { name: "Requirements" },
     { name: "AI Analysis" }, { name: "AI Jobs" }, { name: "Tasks" }, { name: "Sprints" },
   ],
   components: {
@@ -21,6 +21,8 @@ export const openApiDocument = {
     },
   },
   paths: {
+    "/health": { get: { tags: ["Operations"], summary: "Liveness health check", responses: { "200": { description: "API is alive" } } } },
+    "/ready": { get: { tags: ["Operations"], summary: "Readiness check", responses: { "200": { description: "API dependencies are ready" } } } },
     "/auth/register": { post: { tags: ["Auth"], summary: "Register", requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Register" } } } }, responses: { "201": { description: "Registered" } } } },
     "/auth/login": { post: { tags: ["Auth"], summary: "Login", requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Login" } } } }, responses: { "200": { description: "Logged in" } } } },
     "/auth/me": { get: { tags: ["Auth"], summary: "Current user", security: [{ bearerAuth: [] }], responses: { "200": { description: "Current user" } } } },

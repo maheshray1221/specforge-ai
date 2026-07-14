@@ -11,16 +11,19 @@ import { openApiDocument } from "./docs/openapi.js";
 import { logger } from "./lib/logger.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { notFoundHandler } from "./middlewares/not-found.middleware.js";
+import { requestMonitoring } from "./middlewares/request-monitoring.middleware.js";
 import { apiRouter } from "./routes/index.js";
 
 export const app = express();
 app.disable("x-powered-by");
 app.use((req, res, next) => {
   const id = req.headers["x-request-id"]?.toString() ?? randomUUID();
+  req.id = id;
   res.setHeader("x-request-id", id);
   next();
 });
-app.use(pinoHttp({ logger }));
+app.use(pinoHttp({ logger, genReqId: (req) => req.id }));
+app.use(requestMonitoring);
 app.use(helmet({ contentSecurityPolicy: false }));
 
 app.use(
