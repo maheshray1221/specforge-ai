@@ -135,6 +135,14 @@ FRONTEND_URL=http://localhost:3000
 DATABASE_URL=postgresql://postgres:postgres@localhost:5433/specforge?schema=public
 GROQ_MODEL=openai/gpt-oss-120b
 COOKIE_SECURE=false
+SENTRY_DSN=
+```
+
+Frontend (`apps/frontend/.env.local`):
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000/api/v1
+NEXT_PUBLIC_SENTRY_DSN=
 ```
 
 For production, set `NODE_ENV=production`, use HTTPS, use a managed PostgreSQL URL, and set `FRONTEND_URL` to the deployed frontend origin. Auth cookies are configured as `Secure` + `SameSite=None` automatically in production and `SameSite=Lax` locally.

@@ -17,10 +17,16 @@ Backend:
 - `GROQ_API_KEY` is configured for the production AI provider account.
 - `GROQ_BASE_URL`, `GROQ_MODEL`, and `GROQ_REASONING_EFFORT` are set intentionally.
 - `AI_MAX_INPUT_CHARACTERS`, `AI_REQUEST_TIMEOUT_MS`, `AI_MAX_RETRIES`, `AI_MONTHLY_JOB_QUOTA`, and `AI_MONTHLY_TOKEN_QUOTA` are reviewed before launch.
+- `SENTRY_DSN` is set to the backend Sentry project DSN.
+- `SENTRY_ENVIRONMENT=production`
+- `SENTRY_TRACES_SAMPLE_RATE` is intentionally set, starting low such as `0.05` for production.
 
 Frontend:
 
 - `NEXT_PUBLIC_API_URL` points to the deployed backend API prefix, for example `https://api.example.com/api/v1`.
+- `NEXT_PUBLIC_SENTRY_DSN` is set to the frontend Sentry project DSN.
+- `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production`
+- `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` is intentionally set, starting low such as `0.05` for production.
 
 Infrastructure:
 
@@ -110,6 +116,8 @@ Production monitoring must cover:
 - AI job failures, retries, duration, token usage, and quota exhaustion.
 - Activation funnel drop-offs and AI feedback events.
 - Background job backlog and stuck `PROCESSING` jobs.
+
+Sentry is wired as an optional monitoring provider. If the DSN variables are empty, local development remains a no-op. In staging and production, verify both a backend 500 error and a frontend error appear in the correct Sentry environment before inviting beta users.
 
 ## Rollback
 

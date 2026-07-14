@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { env } from "../config/env.js";
 import { logger } from "../lib/logger.js";
+import { captureException } from "../lib/monitoring.js";
 import { ApiError } from "../utils/api-error.js";
 
 export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
@@ -34,6 +35,10 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
 
   if (statusCode >= 500) {
     logger.error({ err: error, requestId: res.getHeader("x-request-id"), path: req.path }, message);
+    captureException(error, {
+      request: req,
+      tags: { status_code: String(statusCode) },
+    });
   }
 
   res.status(statusCode).json({

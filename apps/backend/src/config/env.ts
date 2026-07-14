@@ -21,6 +21,9 @@ const schema = z.object({
   AI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   AI_MONTHLY_JOB_QUOTA: z.coerce.number().int().min(1).default(100),
   AI_MONTHLY_TOKEN_QUOTA: z.coerce.number().int().min(1000).default(1_000_000),
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
 });
 
 const parsed = schema.safeParse(process.env);
