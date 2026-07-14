@@ -7,6 +7,7 @@ import { ApiError } from "../../utils/api-error.js";
 import { runAIJobInBackground } from "../ai-jobs/ai-job.runner.js";
 import { completeAIJob, createAIJob, enqueueAIJob, failAIJob, markAIJobRunning } from "../ai-jobs/ai-job.service.js";
 import { WRITE_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
+import { assertProjectAIQuota } from "../usage/usage.service.js";
 import { aiAnalysisJsonSchema, aiAnalysisOutputSchema } from "./ai-analysis.output.js";
 import { ANALYSIS_SYSTEM_PROMPT, buildAnalysisPrompt } from "./ai-analysis.prompt.js";
 
@@ -162,6 +163,7 @@ export async function analyzeRequirement(userId: string, requirementId: string, 
   if (!force && existing?.status === AnalysisStatus.COMPLETED && existing.requirementVersionId === version.id) {
     return { analysis: existing, reused: true };
   }
+  await assertProjectAIQuota(userId, requirement.project.id);
 
   const record = await prisma.aIAnalysis.create({
     data: {
@@ -212,6 +214,7 @@ export async function queueRequirementAnalysis(userId: string, requirementId: st
   if (!force && existing?.status === AnalysisStatus.COMPLETED && existing.requirementVersionId === version.id) {
     return { analysis: existing, reused: true, queued: false };
   }
+  await assertProjectAIQuota(userId, requirement.project.id);
 
   const record = await prisma.aIAnalysis.create({
     data: {

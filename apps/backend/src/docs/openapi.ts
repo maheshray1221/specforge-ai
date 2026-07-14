@@ -8,7 +8,7 @@ export const openApiDocument = {
   servers: [{ url: "/api/v1" }],
   tags: [
     { name: "Operations" }, { name: "Auth" }, { name: "Projects" }, { name: "Requirements" },
-    { name: "AI Analysis" }, { name: "AI Jobs" }, { name: "Tasks" }, { name: "Sprints" },
+    { name: "AI Analysis" }, { name: "AI Jobs" }, { name: "Tasks" }, { name: "Sprints" }, { name: "Usage" },
   ],
   components: {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
@@ -39,6 +39,7 @@ export const openApiDocument = {
     "/ai-jobs/{jobId}": { get: { tags: ["AI Jobs"], summary: "Get AI job status", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "jobId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "AI job" } } } },
     "/projects/{projectId}/ai-jobs": { get: { tags: ["AI Jobs"], summary: "List project AI jobs", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }, { in: "query", name: "status", schema: { type: "string" } }, { in: "query", name: "type", schema: { type: "string" } }, { in: "query", name: "page", schema: { type: "integer", minimum: 1 } }, { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "AI jobs" } } } },
     "/projects/{projectId}/tasks": { get: { tags: ["Tasks"], summary: "List project tasks", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }, { in: "query", name: "status", schema: { type: "string" } }, { in: "query", name: "type", schema: { type: "string" } }, { in: "query", name: "priority", schema: { type: "string" } }, { in: "query", name: "sprintId", schema: { type: "string", format: "uuid" } }, { in: "query", name: "search", schema: { type: "string" } }, { in: "query", name: "page", schema: { type: "integer", minimum: 1 } }, { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "Tasks" } } } },
+    "/projects/{projectId}/usage": { get: { tags: ["Usage"], summary: "Get project monthly usage and quotas", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Usage summary" } } } },
     "/projects/{projectId}/sprints": {
       post: { tags: ["Sprints"], summary: "Create sprint", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "201": { description: "Created" } } },
       get: { tags: ["Sprints"], summary: "List sprints", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Sprints" } } },

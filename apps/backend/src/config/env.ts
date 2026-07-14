@@ -19,6 +19,8 @@ const schema = z.object({
   AI_MAX_INPUT_CHARACTERS: z.coerce.number().int().min(1000).max(200000).default(60000),
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(300000).default(120000),
   AI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+  AI_MONTHLY_JOB_QUOTA: z.coerce.number().int().min(1).default(100),
+  AI_MONTHLY_TOKEN_QUOTA: z.coerce.number().int().min(1000).default(1_000_000),
 });
 
 const parsed = schema.safeParse(process.env);

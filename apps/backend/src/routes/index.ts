@@ -7,6 +7,7 @@ import { projectRouter } from "../modules/projects/project.route.js";
 import { projectRequirementRouter, requirementRouter } from "../modules/requirements/requirement.route.js";
 import { sprintRouter } from "../modules/sprints/sprint.route.js";
 import { taskRouter } from "../modules/tasks/task.route.js";
+import { usageRouter } from "../modules/usage/usage.route.js";
 
 export const apiRouter = Router();
 apiRouter.use(operationsRouter);
@@ -18,3 +19,4 @@ apiRouter.use(aiAnalysisRouter);
 apiRouter.use(aiJobRouter);
 apiRouter.use(taskRouter);
 apiRouter.use(sprintRouter);
+apiRouter.use(usageRouter);

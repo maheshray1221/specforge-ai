@@ -9,6 +9,7 @@ import { runAIJobInBackground } from "../ai-jobs/ai-job.runner.js";
 import { completeAIJob, createAIJob, enqueueAIJob, failAIJob } from "../ai-jobs/ai-job.service.js";
 import { aiAnalysisOutputSchema } from "../ai-analysis/ai-analysis.output.js";
 import { WRITE_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
+import { assertProjectAIQuota } from "../usage/usage.service.js";
 import { taskGeneratorJsonSchema, taskGeneratorOutputSchema } from "./task-generator.output.js";
 import { TASK_SYSTEM_PROMPT, buildTaskPrompt } from "./task-generator.prompt.js";
 import type { UpdateTaskInput } from "./task.schema.js";
@@ -75,6 +76,7 @@ export async function queueTaskGeneration(userId: string, analysisId: string, re
     const locked = await prisma.task.findFirst({ where: { analysisId, OR: [{ status: { not: TaskStatus.BACKLOG } }, { sprintId: { not: null } }] }, select: { id: true } });
     if (locked) throw new ApiError(409, "Tasks cannot be regenerated after sprint planning or work has started");
   }
+  await assertProjectAIQuota(userId, analysis.requirement.project.id);
 
   const job = await enqueueAIJob({
     type: AIJobType.TASK_GENERATION,
@@ -139,6 +141,7 @@ export async function generateTasks(userId: string, analysisId: string, regenera
     const locked = await prisma.task.findFirst({ where: { analysisId, OR: [{ status: { not: TaskStatus.BACKLOG } }, { sprintId: { not: null } }] }, select: { id: true } });
     if (locked) throw new ApiError(409, "Tasks cannot be regenerated after sprint planning or work has started");
   }
+  await assertProjectAIQuota(userId, analysis.requirement.project.id);
 
   const job = await createAIJob({
     type: AIJobType.TASK_GENERATION,
