@@ -145,6 +145,7 @@ const generatedTask = {
   requirementId: requirement.id,
   analysisId: completedAnalysis.id,
   sprintId: null,
+  assigneeId: null,
   createdById: user.id,
   title: "Implement email verification",
   description: "Create verification token generation and validation.",
@@ -156,6 +157,7 @@ const generatedTask = {
   labels: ["story:US-1"],
   position: 0,
   sprint: null,
+  assignee: null,
   createdAt: "2026-07-12T00:00:00.000Z",
   updatedAt: "2026-07-12T00:00:00.000Z",
 };
@@ -481,6 +483,25 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
       return;
     }
 
+    if (path === `/projects/${createdProject.id}/members` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            members: [{
+              id: "workspace-member-e2e",
+              role: "OWNER",
+              createdAt: "2026-07-12T00:00:00.000Z",
+              user: { id: user.id, name: user.name, email: user.email },
+            }],
+          },
+        }),
+      });
+      return;
+    }
+
     if (path === "/notifications" && request.method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -566,6 +587,22 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ success: true, data: { comments } }),
+      });
+      return;
+    }
+
+    if (path === `/tasks/${generatedTask.id}` && request.method() === "PATCH") {
+      const payload = await request.postDataJSON();
+      tasks = tasks.map((task) => ({
+        ...task,
+        ...payload,
+        assigneeId: payload.assigneeId ?? task.assigneeId,
+        assignee: payload.assigneeId ? { id: user.id, name: user.name, email: user.email } : null,
+      }));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { task: tasks[0] } }),
       });
       return;
     }
@@ -667,6 +704,8 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
   await expect(page.getByText("0 unread notifications.")).toBeVisible();
 
   await page.getByRole("tab", { name: /tasks/i }).click();
+  await page.getByLabel("Task assignee").selectOption(user.id);
+  await expect(page.getByText(`${user.name} · Backlog`)).toBeVisible();
   await page.getByRole("button", { name: /comments/i }).click();
   await page.getByPlaceholder(`Comment on "${generatedTask.title}"...`).fill("Looks good for backend implementation.");
   await page.getByRole("button", { name: /post comment/i }).click();

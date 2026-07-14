@@ -85,6 +85,13 @@ export interface TaskComment {
   author: { id: string; name: string; email: string };
 }
 
+export interface ProjectMember {
+  id: string;
+  role: WorkspaceRole;
+  createdAt: string;
+  user: { id: string; name: string; email: string };
+}
+
 export type IntegrationProvider = "GITHUB" | "JIRA" | "LINEAR" | "SLACK" | "WEBHOOK";
 export type IntegrationStatus = "CONNECTED" | "PAUSED" | "ERROR";
 
@@ -168,6 +175,7 @@ export interface Task {
   requirementId: string | null;
   analysisId: string | null;
   sprintId: string | null;
+  assigneeId: string | null;
   title: string;
   description: string;
   type: "FRONTEND" | "BACKEND" | "QA" | "DEVOPS" | "DESIGN" | "DOCUMENTATION";
@@ -178,6 +186,7 @@ export interface Task {
   labels: string[];
   position: number;
   sprint: { id: string; name: string; status: string } | null;
+  assignee: { id: string; name: string; email: string } | null;
 }
 
 export interface Sprint {

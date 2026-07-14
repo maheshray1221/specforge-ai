@@ -84,3 +84,18 @@ export async function listProjectActivity(userId: string, projectId: string, lim
     take: limit,
   });
 }
+
+export async function listProjectMembers(userId: string, projectId: string) {
+  const access = await getProjectAccess(userId, projectId);
+
+  return prisma.workspaceMember.findMany({
+    where: { workspaceId: access.workspaceId },
+    select: {
+      id: true,
+      role: true,
+      createdAt: true,
+      user: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+  });
+}

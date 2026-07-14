@@ -36,3 +36,14 @@ export const listProjectActivity: RequestHandler = async (req, res) =>
       ),
     },
   });
+
+export const listProjectMembers: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: {
+      members: await service.listProjectMembers(
+        req.user!.id,
+        getRouteParam(req.params.projectId, "projectId"),
+      ),
+    },
+  });

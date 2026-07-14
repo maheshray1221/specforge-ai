@@ -18,4 +18,8 @@ export const listProjectActivitySchema = z.object({
   }),
 });
 
+export const listProjectMembersSchema = z.object({
+  params: z.object({ projectId: z.string().uuid() }),
+});
+
 export type CreateTaskCommentInput = z.infer<typeof createTaskCommentSchema>["body"];

@@ -37,7 +37,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, apiText } from "@/lib/api";
-import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus } from "@/lib/types";
+import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectMember, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus } from "@/lib/types";
 
 const taskColumns: Array<{ key: TaskStatus; label: string }> = [
   { key: "BACKLOG", label: "Backlog" },
@@ -537,6 +537,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [analytics, setAnalytics] = useState<ProjectAnalyticsSummary | null>(null);
   const [activity, setActivity] = useState<ProjectActivity[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
   const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
   const [integrationDraft, setIntegrationDraft] = useState<{ provider: IntegrationProvider; displayName: string; externalRef: string; config: string }>({
     provider: "GITHUB",
@@ -558,7 +559,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     setLoading(true);
     setError("");
     try {
-      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData, activityData, notificationData, integrationData] = await Promise.all([
+      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData, activityData, notificationData, memberData, integrationData] = await Promise.all([
         api<{ project: Project }>(`/projects/${projectId}`),
         api<{ requirements: Requirement[] }>(`/projects/${projectId}/requirements`),
         api<{ tasks: Task[] }>(`/projects/${projectId}/tasks`),
@@ -567,6 +568,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         api<ProjectAnalyticsSummary>(`/projects/${projectId}/analytics/summary?days=30`),
         api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`),
         api<{ notifications: Notification[] }>("/notifications?limit=10"),
+        api<{ members: ProjectMember[] }>(`/projects/${projectId}/members`),
         api<{ integrations: ProjectIntegration[] }>(`/projects/${projectId}/integrations`),
       ]);
       setProject(projectData.project);
@@ -577,6 +579,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       setAnalytics(analyticsData);
       setActivity(activityData.activity);
       setNotifications(notificationData.notifications);
+      setMembers(memberData.members);
       setIntegrations(integrationData.integrations);
       setSelectedRequirementId((current) => current || requirementData.requirements[0]?.id || "");
     } catch (reason) {
@@ -694,6 +697,21 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       setTasks((current) => current.map((item) => item.id === task.id ? data.task : item));
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "Task could not be updated");
+    }
+  }
+
+  async function assignTaskMember(task: Task, assigneeId: string) {
+    setError("");
+    try {
+      const data = await api<{ task: Task }>(`/tasks/${task.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ assigneeId: assigneeId || null }),
+      });
+      setTasks((current) => current.map((item) => item.id === task.id ? data.task : item));
+      const refreshed = await api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`);
+      setActivity(refreshed.activity);
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Task assignee could not be updated");
     }
   }
 
@@ -922,7 +940,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
 
         <TabsContent value="tasks">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold">Engineering backlog</h2><p className="mt-1 text-sm text-slate-500">Move tasks through the workflow and assign them to a sprint.</p>{selectedRequirement && selectedRequirement.status !== "APPROVED" && <p className="mt-1 text-xs text-amber-700">Approve the selected requirement before generating tasks.</p>}</div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void exportTasksCsv()} disabled={tasks.length === 0}><Download className="h-4 w-4" /> Export CSV</Button>{analysis && <Button variant="outline" onClick={() => generateTasks(tasks.some((task) => task.analysisId === analysis.id))} disabled={action === "tasks" || selectedRequirement?.status !== "APPROVED"}>{action === "tasks" && <Spinner />} {tasks.some((task) => task.analysisId === analysis.id) ? "Regenerate tasks" : "Generate tasks"}</Button>}</div></div>
-          {tasks.length === 0 ? <EmptyState icon={ListChecks} title="No tasks generated" text="Analyze a requirement and generate a development-ready backlog." /> : <div className="overflow-x-auto pb-3"><div className="grid min-w-[1100px] grid-cols-5 gap-3">{taskColumns.map((column) => <div key={column.key} className="rounded-2xl bg-slate-100/80 p-3"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{column.label}</h3><Badge>{groupedTasks[column.key].length}</Badge></div><div className="space-y-3">{groupedTasks[column.key].map((task) => <motion.div layout key={task.id}><Card className="p-3.5"><div className="flex items-start justify-between gap-2"><Badge>{task.type}</Badge><Badge className={priorityClass[task.priority]}>{task.priority}</Badge></div><h4 className="mt-3 text-sm font-semibold leading-5">{task.title}</h4><p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{task.description}</p><div className="mt-2 flex flex-wrap gap-2"><EditTaskDialog task={task} onUpdated={(updated) => setTasks((current) => current.map((item) => item.id === updated.id ? updated : item))} /><Button size="sm" variant="outline" onClick={() => void toggleTaskComments(task.id)}><MessageSquare className="h-3.5 w-3.5" /> Comments</Button></div><div className="mt-3 flex flex-wrap gap-1">{task.labels.slice(0, 3).map((label) => <span key={label} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{label}</span>)}</div><div className="mt-4 grid gap-2"><select aria-label="Task status" value={task.status} onChange={(event) => void updateTaskStatus(task, event.target.value as TaskStatus)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none">{taskColumns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select><select aria-label="Sprint assignment" value={task.sprintId ?? ""} onChange={(event) => void assignSprint(task, event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none"><option value="">No sprint</option>{sprints.filter((sprint) => sprint.status !== "COMPLETED").map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}</select></div>{openCommentsTaskId === task.id && <TaskCommentsPanel task={task} comments={commentsByTask[task.id] ?? []} draft={commentDrafts[task.id] ?? ""} loading={action === `comment-post-${task.id}` || action === `comments-${task.id}`} onDraftChange={(value) => setCommentDrafts((current) => ({ ...current, [task.id]: value }))} onSubmit={() => postTaskComment(task.id)} />}<div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500"><span>{task.storyPoints ?? "—"} points</span><span>{task.sprint?.name ?? "Backlog"}</span></div></Card></motion.div>)}</div></div>)}</div></div>}
+          {tasks.length === 0 ? <EmptyState icon={ListChecks} title="No tasks generated" text="Analyze a requirement and generate a development-ready backlog." /> : <div className="overflow-x-auto pb-3"><div className="grid min-w-[1100px] grid-cols-5 gap-3">{taskColumns.map((column) => <div key={column.key} className="rounded-2xl bg-slate-100/80 p-3"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{column.label}</h3><Badge>{groupedTasks[column.key].length}</Badge></div><div className="space-y-3">{groupedTasks[column.key].map((task) => <motion.div layout key={task.id}><Card className="p-3.5"><div className="flex items-start justify-between gap-2"><Badge>{task.type}</Badge><Badge className={priorityClass[task.priority]}>{task.priority}</Badge></div><h4 className="mt-3 text-sm font-semibold leading-5">{task.title}</h4><p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{task.description}</p><div className="mt-2 flex flex-wrap gap-2"><EditTaskDialog task={task} onUpdated={(updated) => setTasks((current) => current.map((item) => item.id === updated.id ? updated : item))} /><Button size="sm" variant="outline" onClick={() => void toggleTaskComments(task.id)}><MessageSquare className="h-3.5 w-3.5" /> Comments</Button></div><div className="mt-3 flex flex-wrap gap-1">{task.labels.slice(0, 3).map((label) => <span key={label} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{label}</span>)}</div><div className="mt-4 grid gap-2"><select aria-label="Task status" value={task.status} onChange={(event) => void updateTaskStatus(task, event.target.value as TaskStatus)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none">{taskColumns.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select><select aria-label="Sprint assignment" value={task.sprintId ?? ""} onChange={(event) => void assignSprint(task, event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none"><option value="">No sprint</option>{sprints.filter((sprint) => sprint.status !== "COMPLETED").map((sprint) => <option key={sprint.id} value={sprint.id}>{sprint.name}</option>)}</select><select aria-label="Task assignee" value={task.assigneeId ?? ""} onChange={(event) => void assignTaskMember(task, event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none"><option value="">Unassigned</option>{members.map((member) => <option key={member.user.id} value={member.user.id}>{member.user.name} · {member.role}</option>)}</select></div>{openCommentsTaskId === task.id && <TaskCommentsPanel task={task} comments={commentsByTask[task.id] ?? []} draft={commentDrafts[task.id] ?? ""} loading={action === `comment-post-${task.id}` || action === `comments-${task.id}`} onDraftChange={(value) => setCommentDrafts((current) => ({ ...current, [task.id]: value }))} onSubmit={() => postTaskComment(task.id)} />}<div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500"><span>{task.storyPoints ?? "—"} points</span><span>{task.assignee?.name ?? "Unassigned"} · {task.sprint?.name ?? "Backlog"}</span></div></Card></motion.div>)}</div></div>)}</div></div>}
         </TabsContent>
 
         <TabsContent value="sprints">
