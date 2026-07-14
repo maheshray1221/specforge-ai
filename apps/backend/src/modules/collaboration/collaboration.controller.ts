@@ -47,3 +47,45 @@ export const listProjectMembers: RequestHandler = async (req, res) =>
       ),
     },
   });
+
+export const listProjectInvitations: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: {
+      invitations: await service.listProjectInvitations(
+        req.user!.id,
+        getRouteParam(req.params.projectId, "projectId"),
+      ),
+    },
+  });
+
+export const createProjectInvitation: RequestHandler = async (req, res) =>
+  res.status(201).json({
+    success: true,
+    data: {
+      invitation: await service.createProjectInvitation(
+        req.user!.id,
+        getRouteParam(req.params.projectId, "projectId"),
+        req.body,
+      ),
+    },
+  });
+
+export const cancelProjectInvitation: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: {
+      invitation: await service.cancelProjectInvitation(
+        req.user!.id,
+        getRouteParam(req.params.invitationId, "invitationId"),
+      ),
+    },
+  });
+
+export const acceptProjectInvitation: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: {
+      member: await service.acceptProjectInvitation(req.user!.id, req.body),
+    },
+  });

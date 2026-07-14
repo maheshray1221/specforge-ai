@@ -120,6 +120,7 @@ model User {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   memberships    WorkspaceMember[]
+  sentInvitations WorkspaceInvitation[] @relation("WorkspaceInvitationInviter")
   refreshTokens  RefreshToken[]
   requirements   Requirement[]     @relation("RequirementCreator")
   requirementVersions RequirementVersion[] @relation("RequirementVersionCreator")
@@ -152,6 +153,7 @@ model Workspace {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   memberships WorkspaceMember[]
+  invitations WorkspaceInvitation[]
   projects    Project[]
 }
 
@@ -166,6 +168,26 @@ model WorkspaceMember {
 
   @@unique([workspaceId, userId])
   @@index([userId])
+}
+
+model WorkspaceInvitation {
+  id          String        @id @default(uuid())
+  workspaceId String
+  email       String
+  role        WorkspaceRole @default(MEMBER)
+  tokenHash   String        @unique
+  invitedById String
+  acceptedAt  DateTime?
+  cancelledAt DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy   User          @relation("WorkspaceInvitationInviter", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, email])
+  @@index([tokenHash])
+  @@index([expiresAt])
 }
 
 model Project {

@@ -92,6 +92,19 @@ export interface ProjectMember {
   user: { id: string; name: string; email: string };
 }
 
+export interface ProjectInvitation {
+  id: string;
+  workspaceId: string;
+  email: string;
+  role: Exclude<WorkspaceRole, "OWNER">;
+  acceptedAt: string | null;
+  cancelledAt: string | null;
+  expiresAt: string;
+  createdAt: string;
+  invitedBy: { id: string; name: string; email: string };
+  acceptanceToken?: string;
+}
+
 export type IntegrationProvider = "GITHUB" | "JIRA" | "LINEAR" | "SLACK" | "WEBHOOK";
 export type IntegrationStatus = "CONNECTED" | "PAUSED" | "ERROR";
 

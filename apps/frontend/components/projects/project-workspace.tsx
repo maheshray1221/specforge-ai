@@ -21,6 +21,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  UserPlus,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
@@ -37,7 +38,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, apiText } from "@/lib/api";
-import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectMember, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus } from "@/lib/types";
+import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectInvitation, ProjectMember, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus, WorkspaceRole } from "@/lib/types";
 
 const taskColumns: Array<{ key: TaskStatus; label: string }> = [
   { key: "BACKLOG", label: "Backlog" },
@@ -225,16 +226,109 @@ function AnalyticsSummaryCard({ analytics }: { analytics: ProjectAnalyticsSummar
 function CollaborationPanel({
   activity,
   notifications,
+  members,
+  invitations,
+  inviteDraft,
+  inviteToken,
+  loading,
+  onInviteDraftChange,
+  onCreateInvitation,
+  onCancelInvitation,
   onMarkRead,
 }: {
   activity: ProjectActivity[];
   notifications: Notification[];
+  members: ProjectMember[];
+  invitations: ProjectInvitation[];
+  inviteDraft: { email: string; role: Exclude<WorkspaceRole, "OWNER"> };
+  inviteToken: string;
+  loading: string;
+  onInviteDraftChange: (draft: { email: string; role: Exclude<WorkspaceRole, "OWNER"> }) => void;
+  onCreateInvitation: () => Promise<void>;
+  onCancelInvitation: (invitation: ProjectInvitation) => Promise<void>;
   onMarkRead: (notificationId: string) => Promise<void>;
 }) {
   const unread = notifications.filter((notification) => !notification.readAt);
+  const pendingInvitations = invitations.filter((invitation) => !invitation.acceptedAt && !invitation.cancelledAt && new Date(invitation.expiresAt) > new Date());
 
   return (
     <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><UserPlus className="h-4 w-4 text-emerald-600" /> Invite member</CardTitle>
+            <CardDescription>Admins can create secure one-time invite tokens for workspace collaborators.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <input
+              value={inviteDraft.email}
+              onChange={(event) => onInviteDraftChange({ ...inviteDraft, email: event.target.value })}
+              placeholder="teammate@example.com"
+              className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
+            />
+            <select
+              value={inviteDraft.role}
+              onChange={(event) => onInviteDraftChange({ ...inviteDraft, role: event.target.value as Exclude<WorkspaceRole, "OWNER"> })}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none"
+            >
+              <option value="ADMIN">Admin</option>
+              <option value="MEMBER">Member</option>
+              <option value="VIEWER">Viewer</option>
+            </select>
+            <Button onClick={() => void onCreateInvitation()} disabled={loading === "invite" || !inviteDraft.email.trim()}>
+              {loading === "invite" ? <><Spinner /> Creating</> : <><UserPlus className="h-4 w-4" /> Create invite</>}
+            </Button>
+            {inviteToken && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-semibold text-emerald-800">One-time acceptance token</p>
+                <p className="mt-2 break-all font-mono text-xs text-emerald-900">{inviteToken}</p>
+                <p className="mt-2 text-xs text-emerald-700">Show this only to the invited user. It is not stored in plain text.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Members & pending invites</CardTitle>
+            <CardDescription>{members.length} active member{members.length === 1 ? "" : "s"} · {pendingInvitations.length} pending invite{pendingInvitations.length === 1 ? "" : "s"}.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active members</p>
+                {members.map((member) => (
+                  <div key={member.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{member.user.name}</p>
+                      <p className="text-xs text-slate-500">{member.user.email}</p>
+                    </div>
+                    <Badge>{member.role}</Badge>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pending invites</p>
+                {pendingInvitations.length === 0 ? <p className="text-sm text-slate-500">No pending invitations.</p> : pendingInvitations.map((invitation) => (
+                  <div key={invitation.id} className="rounded-2xl border border-slate-200 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{invitation.email}</p>
+                        <p className="mt-1 text-xs text-slate-500">Invited by {invitation.invitedBy.name} · expires {new Date(invitation.expiresAt).toLocaleDateString()}</p>
+                      </div>
+                      <Badge>{invitation.role}</Badge>
+                    </div>
+                    <Button className="mt-3" size="sm" variant="outline" onClick={() => void onCancelInvitation(invitation)} disabled={loading === `invite-cancel-${invitation.id}`}>
+                      {loading === `invite-cancel-${invitation.id}` ? <><Spinner /> Cancelling</> : "Cancel invite"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <Card>
           <CardHeader>
@@ -538,6 +632,9 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [activity, setActivity] = useState<ProjectActivity[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
+  const [inviteDraft, setInviteDraft] = useState<{ email: string; role: Exclude<WorkspaceRole, "OWNER"> }>({ email: "", role: "MEMBER" });
+  const [inviteToken, setInviteToken] = useState("");
   const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
   const [integrationDraft, setIntegrationDraft] = useState<{ provider: IntegrationProvider; displayName: string; externalRef: string; config: string }>({
     provider: "GITHUB",
@@ -559,7 +656,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     setLoading(true);
     setError("");
     try {
-      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData, activityData, notificationData, memberData, integrationData] = await Promise.all([
+      const [projectData, requirementData, taskData, sprintData, usageData, analyticsData, activityData, notificationData, memberData, invitationData, integrationData] = await Promise.all([
         api<{ project: Project }>(`/projects/${projectId}`),
         api<{ requirements: Requirement[] }>(`/projects/${projectId}/requirements`),
         api<{ tasks: Task[] }>(`/projects/${projectId}/tasks`),
@@ -569,6 +666,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`),
         api<{ notifications: Notification[] }>("/notifications?limit=10"),
         api<{ members: ProjectMember[] }>(`/projects/${projectId}/members`),
+        api<{ invitations: ProjectInvitation[] }>(`/projects/${projectId}/invitations`),
         api<{ integrations: ProjectIntegration[] }>(`/projects/${projectId}/integrations`),
       ]);
       setProject(projectData.project);
@@ -580,6 +678,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       setActivity(activityData.activity);
       setNotifications(notificationData.notifications);
       setMembers(memberData.members);
+      setInvitations(invitationData.invitations);
       setIntegrations(integrationData.integrations);
       setSelectedRequirementId((current) => current || requirementData.requirements[0]?.id || "");
     } catch (reason) {
@@ -819,6 +918,40 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  async function createInvitation() {
+    setAction("invite");
+    setError("");
+    setInviteToken("");
+    try {
+      const data = await api<{ invitation: ProjectInvitation }>(`/projects/${projectId}/invitations`, {
+        method: "POST",
+        body: JSON.stringify({ email: inviteDraft.email.trim(), role: inviteDraft.role }),
+      });
+      setInvitations((current) => [data.invitation, ...current]);
+      setInviteToken(data.invitation.acceptanceToken ?? "");
+      setInviteDraft({ email: "", role: "MEMBER" });
+      const refreshed = await api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`);
+      setActivity(refreshed.activity);
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Invitation could not be created");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function cancelInvitation(invitation: ProjectInvitation) {
+    setAction(`invite-cancel-${invitation.id}`);
+    setError("");
+    try {
+      const data = await api<{ invitation: ProjectInvitation }>(`/invitations/${invitation.id}`, { method: "DELETE" });
+      setInvitations((current) => current.map((item) => item.id === invitation.id ? data.invitation : item));
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Invitation could not be cancelled");
+    } finally {
+      setAction("");
+    }
+  }
+
   async function createIntegration() {
     setAction("integration-create");
     setError("");
@@ -977,7 +1110,19 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         </TabsContent>
 
         <TabsContent value="collaboration">
-          <CollaborationPanel activity={activity} notifications={notifications} onMarkRead={markNotificationRead} />
+          <CollaborationPanel
+            activity={activity}
+            notifications={notifications}
+            members={members}
+            invitations={invitations}
+            inviteDraft={inviteDraft}
+            inviteToken={inviteToken}
+            loading={action}
+            onInviteDraftChange={setInviteDraft}
+            onCreateInvitation={createInvitation}
+            onCancelInvitation={cancelInvitation}
+            onMarkRead={markNotificationRead}
+          />
         </TabsContent>
 
         <TabsContent value="integrations">

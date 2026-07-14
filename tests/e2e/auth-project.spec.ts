@@ -289,6 +289,18 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
     createdAt: "2026-07-12T00:00:00.000Z",
     updatedAt: "2026-07-12T00:00:00.000Z",
   }];
+  let invitations: Array<{
+    id: string;
+    workspaceId: string;
+    email: string;
+    role: "ADMIN" | "MEMBER" | "VIEWER";
+    acceptedAt: string | null;
+    cancelledAt: string | null;
+    expiresAt: string;
+    createdAt: string;
+    invitedBy: { id: string; name: string; email: string };
+    acceptanceToken?: string;
+  }> = [];
 
   await page.route(apiPattern, async (route) => {
     const request = route.request();
@@ -502,6 +514,48 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
       return;
     }
 
+    if (path === `/projects/${createdProject.id}/invitations` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { invitations } }),
+      });
+      return;
+    }
+
+    if (path === `/projects/${createdProject.id}/invitations` && request.method() === "POST") {
+      const payload = await request.postDataJSON();
+      const invitation = {
+        id: "550e8400-e29b-41d4-a716-446655440096",
+        workspaceId: createdProject.workspaceId,
+        email: payload.email,
+        role: payload.role,
+        acceptedAt: null,
+        cancelledAt: null,
+        expiresAt: "2026-07-26T00:00:00.000Z",
+        createdAt: "2026-07-12T00:00:00.000Z",
+        invitedBy: { id: user.id, name: user.name, email: user.email },
+        acceptanceToken: "e2e-invite-token-12345678901234567890123456789012",
+      };
+      invitations = [invitation, ...invitations];
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { invitation } }),
+      });
+      return;
+    }
+
+    if (path === "/invitations/550e8400-e29b-41d4-a716-446655440096" && request.method() === "DELETE") {
+      invitations = invitations.map((invitation) => ({ ...invitation, cancelledAt: "2026-07-12T00:02:00.000Z" }));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { invitation: invitations[0] } }),
+      });
+      return;
+    }
+
     if (path === "/notifications" && request.method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -702,6 +756,12 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
   await expect(page.getByText("Task generated")).toBeVisible();
   await page.getByRole("button", { name: /mark read/i }).click();
   await expect(page.getByText("0 unread notifications.")).toBeVisible();
+  await page.getByPlaceholder("teammate@example.com").fill("teammate@example.com");
+  await page.getByRole("button", { name: /create invite/i }).click();
+  await expect(page.getByText("One-time acceptance token")).toBeVisible();
+  await expect(page.getByText("teammate@example.com")).toBeVisible();
+  await page.getByRole("button", { name: /cancel invite/i }).click();
+  await expect(page.getByText("No pending invitations.")).toBeVisible();
 
   await page.getByRole("tab", { name: /tasks/i }).click();
   await page.getByLabel("Task assignee").selectOption(user.id);
