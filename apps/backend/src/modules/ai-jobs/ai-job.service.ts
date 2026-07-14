@@ -1,6 +1,7 @@
 import { AIJobStatus, type AIErrorCategory, type AIJobType } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { ApiError } from "../../utils/api-error.js";
+import { getPagination, getPaginationMeta } from "../../utils/pagination.js";
 import { getProjectAccess } from "../projects/project.access.js";
 
 interface CreateAIJobInput {
@@ -38,6 +39,7 @@ interface FailAIJobInput {
 interface ListAIJobsFilters {
   status?: AIJobStatus;
   type?: AIJobType;
+  page?: number;
   limit?: number;
 }
 
@@ -86,17 +88,32 @@ export async function getAIJob(userId: string, jobId: string) {
 
 export async function listProjectAIJobs(userId: string, projectId: string, filters: ListAIJobsFilters) {
   await getProjectAccess(userId, projectId);
+  const pagination = getPagination(filters);
+  const where = {
+    projectId,
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.type ? { type: filters.type } : {}),
+  };
 
-  return prisma.aIJob.findMany({
-    where: {
-      projectId,
-      ...(filters.status ? { status: filters.status } : {}),
-      ...(filters.type ? { type: filters.type } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: filters.limit ?? 25,
-    select,
-  });
+  const [jobs, total] = await prisma.$transaction([
+    prisma.aIJob.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: pagination.skip,
+      take: pagination.take,
+      select,
+    }),
+    prisma.aIJob.count({ where }),
+  ]);
+
+  return {
+    jobs,
+    pagination: getPaginationMeta({
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+    }),
+  };
 }
 
 export async function enqueueAIJob(input: EnqueueAIJobInput) {

@@ -26,13 +26,11 @@ export const generate: RequestHandler = async (req, res) => {
 export const list: RequestHandler = async (req, res) =>
   res.json({
     success: true,
-    data: {
-      tasks: await service.listProjectTasks(
-        req.user!.id,
-        getRouteParam(req.params.projectId, "projectId"),
-        req.query as never,
-      ),
-    },
+    data: await service.listProjectTasks(
+      req.user!.id,
+      getRouteParam(req.params.projectId, "projectId"),
+      req.query as never,
+    ),
   });
 export const update: RequestHandler = async (req, res) =>
   res.json({

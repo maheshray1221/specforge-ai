@@ -11,7 +11,15 @@ export const generateTasksSchema = z.object({
 
 export const listTasksSchema = z.object({
   params: z.object({ projectId: z.string().uuid() }),
-  query: z.object({ status: z.nativeEnum(TaskStatus).optional(), type: z.nativeEnum(TaskType).optional(), sprintId: z.string().uuid().optional() }),
+  query: z.object({
+    status: z.nativeEnum(TaskStatus).optional(),
+    type: z.nativeEnum(TaskType).optional(),
+    priority: z.nativeEnum(TaskPriority).optional(),
+    sprintId: z.string().uuid().optional(),
+    search: z.string().trim().max(100).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  }),
 });
 
 export const taskIdSchema = z.object({ params: z.object({ taskId: z.string().uuid() }) });

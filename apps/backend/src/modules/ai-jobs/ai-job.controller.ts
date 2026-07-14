@@ -13,11 +13,9 @@ export const getOne: RequestHandler = async (req, res) =>
 export const listForProject: RequestHandler = async (req, res) =>
   res.json({
     success: true,
-    data: {
-      jobs: await service.listProjectAIJobs(
-        req.user!.id,
-        getRouteParam(req.params.projectId, "projectId"),
-        req.query as never,
-      ),
-    },
+    data: await service.listProjectAIJobs(
+      req.user!.id,
+      getRouteParam(req.params.projectId, "projectId"),
+      req.query as never,
+    ),
   });

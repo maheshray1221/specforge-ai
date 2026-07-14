@@ -1,9 +1,10 @@
 import { AIJobType, AnalysisStatus, ProjectStatus, RequirementStatus, TaskStatus } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, TaskPriority, TaskType } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { generateStructuredOutput } from "../../lib/ai/groq.client.js";
 import { extractAIErrorTelemetry } from "../../lib/ai/telemetry.js";
 import { ApiError } from "../../utils/api-error.js";
+import { getPagination, getPaginationMeta } from "../../utils/pagination.js";
 import { runAIJobInBackground } from "../ai-jobs/ai-job.runner.js";
 import { completeAIJob, createAIJob, enqueueAIJob, failAIJob } from "../ai-jobs/ai-job.service.js";
 import { aiAnalysisOutputSchema } from "../ai-analysis/ai-analysis.output.js";
@@ -232,18 +233,56 @@ export async function generateTasks(userId: string, analysisId: string, regenera
   return { tasks, generationNotes: result.data.generationNotes, reused: false };
 }
 
-export async function listProjectTasks(userId: string, projectId: string, filters: { status?: string; type?: string; sprintId?: string }) {
+export async function listProjectTasks(
+  userId: string,
+  projectId: string,
+  filters: {
+    status?: TaskStatus;
+    type?: TaskType;
+    priority?: TaskPriority;
+    sprintId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  },
+) {
   await getProjectAccess(userId, projectId);
-  return prisma.task.findMany({
-    where: {
-      projectId,
-      ...(filters.status ? { status: filters.status as never } : {}),
-      ...(filters.type ? { type: filters.type as never } : {}),
-      ...(filters.sprintId ? { sprintId: filters.sprintId } : {}),
-    },
-    select: taskSelect,
-    orderBy: [{ status: "asc" }, { position: "asc" }, { createdAt: "asc" }],
-  });
+  const pagination = getPagination(filters);
+  const where: Prisma.TaskWhereInput = {
+    projectId,
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.type ? { type: filters.type } : {}),
+    ...(filters.priority ? { priority: filters.priority } : {}),
+    ...(filters.sprintId ? { sprintId: filters.sprintId } : {}),
+    ...(filters.search
+      ? {
+          OR: [
+            { title: { contains: filters.search, mode: "insensitive" } },
+            { description: { contains: filters.search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [tasks, total] = await prisma.$transaction([
+    prisma.task.findMany({
+      where,
+      select: taskSelect,
+      orderBy: [{ status: "asc" }, { position: "asc" }, { createdAt: "asc" }],
+      skip: pagination.skip,
+      take: pagination.take,
+    }),
+    prisma.task.count({ where }),
+  ]);
+
+  return {
+    tasks,
+    pagination: getPaginationMeta({
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+    }),
+  };
 }
 
 export async function updateTask(userId: string, taskId: string, input: UpdateTaskInput) {

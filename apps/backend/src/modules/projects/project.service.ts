@@ -2,6 +2,7 @@ import { Prisma, ProjectStatus } from "@prisma/client";
 
 import { prisma } from "../../config/prisma.js";
 import { ApiError } from "../../utils/api-error.js";
+import { getPagination, getPaginationMeta } from "../../utils/pagination.js";
 
 import {
   ADMIN_ROLES,
@@ -65,6 +66,7 @@ export async function createProject(userId: string, input: CreateProjectInput) {
 
 export async function listProjects(userId: string, query: ListProjectsQuery) {
   await getWorkspaceAccess(userId, query.workspaceId);
+  const pagination = getPagination(query);
 
   const where = {
     workspaceId: query.workspaceId,
@@ -95,13 +97,27 @@ export async function listProjects(userId: string, query: ListProjectsQuery) {
       : {}),
   } satisfies Prisma.ProjectWhereInput;
 
-  return prisma.project.findMany({
-    where,
-    select,
-    orderBy: {
-      updatedAt: "desc",
-    },
-  });
+  const [projects, total] = await prisma.$transaction([
+    prisma.project.findMany({
+      where,
+      select,
+      orderBy: {
+        updatedAt: "desc",
+      },
+      skip: pagination.skip,
+      take: pagination.take,
+    }),
+    prisma.project.count({ where }),
+  ]);
+
+  return {
+    projects,
+    pagination: getPaginationMeta({
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+    }),
+  };
 }
 
 export async function getProject(userId: string, projectId: string) {
