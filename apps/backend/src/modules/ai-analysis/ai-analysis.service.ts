@@ -4,7 +4,8 @@ import { prisma } from "../../config/prisma.js";
 import { generateStructuredOutput } from "../../lib/ai/groq.client.js";
 import { extractAIErrorTelemetry } from "../../lib/ai/telemetry.js";
 import { ApiError } from "../../utils/api-error.js";
-import { completeAIJob, createAIJob, failAIJob } from "../ai-jobs/ai-job.service.js";
+import { runAIJobInBackground } from "../ai-jobs/ai-job.runner.js";
+import { completeAIJob, createAIJob, enqueueAIJob, failAIJob, markAIJobRunning } from "../ai-jobs/ai-job.service.js";
 import { WRITE_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
 import { aiAnalysisJsonSchema, aiAnalysisOutputSchema } from "./ai-analysis.output.js";
 import { ANALYSIS_SYSTEM_PROMPT, buildAnalysisPrompt } from "./ai-analysis.prompt.js";
@@ -42,6 +43,101 @@ const analysisSelect = {
 } as const;
 
 const ANALYSIS_PROMPT_SCHEMA_VERSION = "requirement-analysis:v1";
+
+interface RequirementAnalysisContext {
+  id: string;
+  title: string;
+  status: RequirementStatus;
+  project: {
+    id: string;
+    name: string;
+  };
+}
+
+interface RequirementVersionContext {
+  id: string;
+  content: string;
+}
+
+interface RunRequirementAnalysisInput {
+  jobId: string;
+  recordId: string;
+  requirement: RequirementAnalysisContext;
+  version: RequirementVersionContext;
+  markRunning?: boolean;
+}
+
+async function runRequirementAnalysis(input: RunRequirementAnalysisInput) {
+  if (input.markRunning) await markAIJobRunning(input.jobId);
+
+  try {
+    const result = await generateStructuredOutput({
+      schemaName: "specforge_requirement_analysis",
+      schema: aiAnalysisJsonSchema,
+      system: ANALYSIS_SYSTEM_PROMPT,
+      prompt: buildAnalysisPrompt({ projectName: input.requirement.project.name, requirementTitle: input.requirement.title, content: input.version.content }),
+      parse: (value) => aiAnalysisOutputSchema.parse(value),
+      maxOutputTokens: 5000,
+    });
+
+    const hasRequiredQuestions = result.data.clarificationQuestions.some((question) => question.required);
+    const analysis = await prisma.$transaction(async (tx) => {
+      if (hasRequiredQuestions && input.requirement.status !== RequirementStatus.NEEDS_CLARIFICATION) {
+        await tx.requirement.update({ where: { id: input.requirement.id }, data: { status: RequirementStatus.NEEDS_CLARIFICATION } });
+      }
+      return tx.aIAnalysis.update({
+        where: { id: input.recordId },
+        data: {
+          status: AnalysisStatus.COMPLETED,
+          clarificationQuestions: result.data.clarificationQuestions,
+          functionalRequirements: result.data.functionalRequirements,
+          nonFunctionalRequirements: result.data.nonFunctionalRequirements,
+          userStories: result.data.userStories,
+          technicalPlan: result.data.technicalPlan,
+          risks: result.data.risks,
+          rawOutput: result.data,
+          errorMessage: null,
+          errorCategory: null,
+          attempts: result.telemetry.attempts,
+          durationMs: result.telemetry.durationMs,
+          promptTokens: result.usage?.prompt_tokens ?? null,
+          completionTokens: result.usage?.completion_tokens ?? null,
+          totalTokens: result.usage?.total_tokens ?? null,
+        },
+        select: analysisSelect,
+      });
+    });
+    await completeAIJob(input.jobId, {
+      attempts: result.telemetry.attempts,
+      durationMs: result.telemetry.durationMs,
+      promptTokens: result.usage?.prompt_tokens ?? null,
+      completionTokens: result.usage?.completion_tokens ?? null,
+      totalTokens: result.usage?.total_tokens ?? null,
+      outputRef: analysis.id,
+    });
+    return analysis;
+  } catch (error) {
+    const telemetry = extractAIErrorTelemetry(error);
+
+    await prisma.aIAnalysis.update({
+      where: { id: input.recordId },
+      data: {
+        status: AnalysisStatus.FAILED,
+        errorMessage: telemetry.message,
+        errorCategory: telemetry.errorCategory,
+        attempts: telemetry.attempts,
+        durationMs: telemetry.durationMs ?? null,
+      },
+    });
+    await failAIJob(input.jobId, {
+      attempts: telemetry.attempts,
+      durationMs: telemetry.durationMs ?? null,
+      errorCategory: telemetry.errorCategory,
+      errorMessage: telemetry.message,
+    });
+    throw error;
+  }
+}
 
 export async function analyzeRequirement(userId: string, requirementId: string, force: boolean) {
   const requirement = await prisma.requirement.findFirst({
@@ -84,79 +180,71 @@ export async function analyzeRequirement(userId: string, requirementId: string, 
     projectId: requirement.project.id,
     requirementId,
     analysisId: record.id,
-    idempotencyKey: `${requirementId}:${version.id}:${force ? "force" : "reuse"}`,
+    idempotencyKey: `${requirementId}:${version.id}:${record.id}`,
     provider: "groq",
     model: env.GROQ_MODEL,
     promptSchemaVersion: ANALYSIS_PROMPT_SCHEMA_VERSION,
   });
 
-  try {
-    const result = await generateStructuredOutput({
-      schemaName: "specforge_requirement_analysis",
-      schema: aiAnalysisJsonSchema,
-      system: ANALYSIS_SYSTEM_PROMPT,
-      prompt: buildAnalysisPrompt({ projectName: requirement.project.name, requirementTitle: requirement.title, content: version.content }),
-      parse: (value) => aiAnalysisOutputSchema.parse(value),
-      maxOutputTokens: 5000,
-    });
+  const analysis = await runRequirementAnalysis({ jobId: job.id, recordId: record.id, requirement, version });
+  return { analysis, reused: false };
+}
 
-    const hasRequiredQuestions = result.data.clarificationQuestions.some((question) => question.required);
-    const analysis = await prisma.$transaction(async (tx) => {
-      if (hasRequiredQuestions && requirement.status !== RequirementStatus.NEEDS_CLARIFICATION) {
-        await tx.requirement.update({ where: { id: requirementId }, data: { status: RequirementStatus.NEEDS_CLARIFICATION } });
-      }
-      return tx.aIAnalysis.update({
-        where: { id: record.id },
-        data: {
-          status: AnalysisStatus.COMPLETED,
-          clarificationQuestions: result.data.clarificationQuestions,
-          functionalRequirements: result.data.functionalRequirements,
-          nonFunctionalRequirements: result.data.nonFunctionalRequirements,
-          userStories: result.data.userStories,
-          technicalPlan: result.data.technicalPlan,
-          risks: result.data.risks,
-          rawOutput: result.data,
-          errorMessage: null,
-          errorCategory: null,
-          attempts: result.telemetry.attempts,
-          durationMs: result.telemetry.durationMs,
-          promptTokens: result.usage?.prompt_tokens ?? null,
-          completionTokens: result.usage?.completion_tokens ?? null,
-          totalTokens: result.usage?.total_tokens ?? null,
-        },
-        select: analysisSelect,
-      });
-    });
-    await completeAIJob(job.id, {
-      attempts: result.telemetry.attempts,
-      durationMs: result.telemetry.durationMs,
-      promptTokens: result.usage?.prompt_tokens ?? null,
-      completionTokens: result.usage?.completion_tokens ?? null,
-      totalTokens: result.usage?.total_tokens ?? null,
-      outputRef: analysis.id,
-    });
-    return { analysis, reused: false };
-  } catch (error) {
-    const telemetry = extractAIErrorTelemetry(error);
+export async function queueRequirementAnalysis(userId: string, requirementId: string, force: boolean) {
+  const requirement = await prisma.requirement.findFirst({
+    where: { id: requirementId, project: { workspace: { memberships: { some: { userId } } } } },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      project: { select: { id: true, name: true } },
+      versions: { orderBy: { versionNumber: "desc" }, take: 1, select: { id: true, content: true } },
+      analyses: { orderBy: { createdAt: "desc" }, take: 1, select: analysisSelect },
+    },
+  });
+  if (!requirement) throw new ApiError(404, "Requirement was not found");
+  const access = await getProjectAccess(userId, requirement.project.id);
+  assertRole(access.role, WRITE_ROLES, "Viewer members cannot run AI analysis");
+  const version = requirement.versions[0];
+  if (!version) throw new ApiError(409, "Requirement has no version to analyze");
 
-    await prisma.aIAnalysis.update({
-      where: { id: record.id },
-      data: {
-        status: AnalysisStatus.FAILED,
-        errorMessage: telemetry.message,
-        errorCategory: telemetry.errorCategory,
-        attempts: telemetry.attempts,
-        durationMs: telemetry.durationMs ?? null,
-      },
-    });
-    await failAIJob(job.id, {
-      attempts: telemetry.attempts,
-      durationMs: telemetry.durationMs ?? null,
-      errorCategory: telemetry.errorCategory,
-      errorMessage: telemetry.message,
-    });
-    throw error;
+  const existing = requirement.analyses[0];
+  if (!force && existing?.status === AnalysisStatus.COMPLETED && existing.requirementVersionId === version.id) {
+    return { analysis: existing, reused: true, queued: false };
   }
+
+  const record = await prisma.aIAnalysis.create({
+    data: {
+      requirementId,
+      requirementVersionId: version.id,
+      provider: "groq",
+      model: env.GROQ_MODEL,
+      status: AnalysisStatus.PROCESSING,
+      promptSchemaVersion: ANALYSIS_PROMPT_SCHEMA_VERSION,
+    },
+    select: analysisSelect,
+  });
+  const job = await enqueueAIJob({
+    type: AIJobType.REQUIREMENT_ANALYSIS,
+    userId,
+    projectId: requirement.project.id,
+    requirementId,
+    analysisId: record.id,
+    idempotencyKey: `${requirementId}:${version.id}:${record.id}`,
+    provider: "groq",
+    model: env.GROQ_MODEL,
+    promptSchemaVersion: ANALYSIS_PROMPT_SCHEMA_VERSION,
+  });
+
+  runAIJobInBackground({
+    jobId: job.id,
+    jobName: "requirement-analysis",
+    run: async () => {
+      await runRequirementAnalysis({ jobId: job.id, recordId: record.id, requirement, version, markRunning: true });
+    },
+  });
+
+  return { analysis: record, job, reused: false, queued: true };
 }
 
 export async function listAnalyses(userId: string, requirementId: string) {

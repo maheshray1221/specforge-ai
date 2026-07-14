@@ -13,6 +13,19 @@ function getParam(value: string | string[] | undefined, name: string): string {
 export const analyze: RequestHandler = async (req, res) => {
   const requirementId = getParam(req.params.requirementId, "requirementId");
 
+  if (req.body.async) {
+    const data = await service.queueRequirementAnalysis(
+      req.user!.id,
+      requirementId,
+      Boolean(req.body.force),
+    );
+
+    return res.status(data.queued ? 202 : 200).json({
+      success: true,
+      data,
+    });
+  }
+
   const data = await service.analyzeRequirement(
     req.user!.id,
     requirementId,
