@@ -126,6 +126,45 @@ function createGitHubIssueBody(task: {
   ].join("\n");
 }
 
+function getRecordValue(value: unknown, key: string) {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
+}
+
+function parseLinearTeamId(externalRef: string | null, config: unknown) {
+  const configuredTeamId = getRecordValue(config, "teamId");
+  if (typeof configuredTeamId === "string" && configuredTeamId.trim()) return configuredTeamId.trim();
+
+  if (externalRef?.trim()) return externalRef.trim();
+
+  throw new ApiError(400, "Linear integration requires teamId in config or external reference");
+}
+
+function createLinearDescription(task: {
+  description: string;
+  type: string;
+  priority: string;
+  status: string;
+  storyPoints: number | null;
+  labels: string[];
+  assignee: { name: string; email: string } | null;
+  sprint: { name: string } | null;
+}) {
+  return [
+    task.description,
+    "",
+    "## SpecForge metadata",
+    `- Type: ${task.type}`,
+    `- Priority: ${task.priority}`,
+    `- Status: ${task.status}`,
+    `- Story points: ${task.storyPoints ?? "Not estimated"}`,
+    `- Sprint: ${task.sprint?.name ?? "Backlog"}`,
+    `- Assignee: ${task.assignee ? `${task.assignee.name} <${task.assignee.email}>` : "Unassigned"}`,
+    `- Labels: ${task.labels.length > 0 ? task.labels.join(", ") : "None"}`,
+    "",
+    "_Created by SpecForge AI._",
+  ].join("\n");
+}
+
 export async function listProjectIntegrations(
   userId: string,
   projectId: string,
@@ -424,14 +463,151 @@ export async function executeProjectIntegration(userId: string, integrationId: s
     return { run, delivered };
   }
 
-  if (["JIRA", "LINEAR"].includes(integration.provider)) {
+  if (integration.provider === "LINEAR") {
+    const secret = await prisma.projectIntegrationSecret.findUnique({
+      where: { integrationId_name: { integrationId, name: "accessToken" } },
+      select: { encryptedValue: true, iv: true, authTag: true },
+    });
+    if (!secret) {
+      const message = "Linear execution needs an accessToken secret";
+      const run = await prisma.projectIntegrationRun.create({
+        data: {
+          integrationId,
+          projectId: integration.projectId,
+          actorId: userId,
+          action: input.action,
+          status: "ERROR",
+          requestSummary: toJsonObject(requestSummary),
+          errorMessage: message,
+        },
+        select: integrationRunSelect,
+      });
+      await prisma.projectIntegration.update({
+        where: { id: integrationId },
+        data: { lastError: message, status: "ERROR" },
+      });
+      return { run, delivered: false };
+    }
+
+    const teamId = parseLinearTeamId(integration.externalRef, integration.config);
+    const issues = input.action === "SEND_TEST"
+      ? [{
+          title: `[SpecForge] Test issue for ${integration.project.name}`,
+          description: "This test issue confirms SpecForge AI can create Linear issues for this project.",
+        }]
+      : tasks.slice(0, 20).map((task) => ({
+          title: task.title,
+          description: createLinearDescription(task),
+        }));
+
+    if (issues.length === 0) throw new ApiError(400, "No tasks are available to export to Linear");
+
+    if (input.dryRun) {
+      const run = await prisma.projectIntegrationRun.create({
+        data: {
+          integrationId,
+          projectId: integration.projectId,
+          actorId: userId,
+          action: input.action,
+          status: "CONNECTED",
+          requestSummary: toJsonObject({ ...requestSummary, teamId, issueCount: issues.length }),
+          responseBody: "Linear dry run completed without creating issues",
+        },
+        select: integrationRunSelect,
+      });
+      return { run, delivered: false };
+    }
+
+    const token = decryptSecretValue(secret);
+    const createdIssues: Array<{ id: string; identifier: string; url: string }> = [];
+    let lastResponseCode: number | null = null;
+    let lastResponseBody = "";
+
+    const mutation = `
+      mutation SpecForgeIssueCreate($input: IssueCreateInput!) {
+        issueCreate(input: $input) {
+          success
+          issue {
+            id
+            identifier
+            url
+          }
+        }
+      }
+    `;
+
+    for (const issue of issues) {
+      const response = await fetch("https://api.linear.app/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: token,
+          "Content-Type": "application/json",
+          "User-Agent": "SpecForge-AI/1.0",
+        },
+        body: JSON.stringify({
+          query: mutation,
+          variables: {
+            input: {
+              teamId,
+              title: issue.title,
+              description: issue.description,
+            },
+          },
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      lastResponseCode = response.status;
+      lastResponseBody = truncateResponseBody(await response.text().catch(() => ""));
+
+      if (!response.ok) break;
+
+      const payload = JSON.parse(lastResponseBody) as {
+        data?: { issueCreate?: { success?: boolean; issue?: { id?: string; identifier?: string; url?: string } } };
+        errors?: unknown[];
+      };
+      const created = payload.data?.issueCreate;
+      if (!created?.success || !created.issue) break;
+      createdIssues.push({
+        id: created.issue.id ?? "",
+        identifier: created.issue.identifier ?? "",
+        url: created.issue.url ?? "",
+      });
+    }
+
+    const delivered = createdIssues.length === issues.length;
+    const responseBody = JSON.stringify({ teamId, createdIssues, attempted: issues.length });
+    const errorMessage = delivered ? null : `Linear issue creation failed after ${createdIssues.length}/${issues.length} issue(s)`;
+    const run = await prisma.projectIntegrationRun.create({
+      data: {
+        integrationId,
+        projectId: integration.projectId,
+        actorId: userId,
+        action: input.action,
+        status: delivered ? "CONNECTED" : "ERROR",
+        requestSummary: toJsonObject({ ...requestSummary, teamId, issueCount: issues.length }),
+        responseCode: lastResponseCode,
+        responseBody: truncateResponseBody(responseBody.length > 20 ? responseBody : lastResponseBody),
+        errorMessage,
+      },
+      select: integrationRunSelect,
+    });
+    await prisma.projectIntegration.update({
+      where: { id: integrationId },
+      data: delivered
+        ? { lastSyncedAt: new Date(), lastError: null, status: "CONNECTED" }
+        : { lastError: errorMessage, status: "ERROR" },
+    });
+    return { run, delivered };
+  }
+
+  if (integration.provider === "JIRA") {
     const secret = await prisma.projectIntegrationSecret.findUnique({
       where: { integrationId_name: { integrationId, name: "accessToken" } },
       select: { id: true },
     });
     const message = secret
-      ? "GitHub/Jira/Linear secure token is stored; real issue creation will be enabled in the next integration task"
-      : "GitHub/Jira/Linear execution needs an accessToken secret before real issue creation can be enabled";
+      ? "Jira secure token is stored; real issue creation will be enabled in the next integration task"
+      : "Jira execution needs an accessToken secret before real issue creation can be enabled";
     const run = await prisma.projectIntegrationRun.create({
       data: {
         integrationId,
