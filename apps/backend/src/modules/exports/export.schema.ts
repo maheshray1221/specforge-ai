@@ -11,3 +11,11 @@ export const exportProjectTasksSchema = z.object({
     search: z.string().trim().max(100).optional(),
   }),
 });
+
+export const exportProjectSprintsSchema = z.object({
+  params: z.object({ projectId: z.string().uuid() }),
+});
+
+export const exportProjectPlanningJsonSchema = z.object({
+  params: z.object({ projectId: z.string().uuid() }),
+});
