@@ -219,6 +219,99 @@ runIfDatabase("auth and project API integration", () => {
       ]),
     );
   });
+
+  it("exports project planning data and blocks cross-workspace exports", async () => {
+    const owner = await registerUserAndCreateProject("EXPA");
+    const outsider = await registerUserAndCreateProject("EXPB");
+
+    const requirement = await request(app)
+      .post(`/api/v1/projects/${owner.projectId}/requirements`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({
+        title: "Exportable onboarding",
+        content: "The project must export onboarding requirements, generated tasks, and sprint planning artifacts.",
+      })
+      .expect(201);
+
+    const sprint = await request(app)
+      .post(`/api/v1/projects/${owner.projectId}/sprints`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({
+        name: "Export Sprint",
+        goal: "Validate planning exports",
+        capacityPoints: 8,
+      })
+      .expect(201);
+
+    const task = await prisma.task.create({
+      data: {
+        projectId: owner.projectId,
+        requirementId: requirement.body.data.requirement.id as string,
+        sprintId: sprint.body.data.sprint.id as string,
+        createdById: owner.userId,
+        title: "Export onboarding backlog",
+        description: "Ensure planning exports include onboarding delivery work.",
+        type: "DOCUMENTATION",
+        priority: "MEDIUM",
+        status: "TODO",
+        storyPoints: 3,
+        acceptanceCriteria: ["Exports include the seeded backlog task."],
+        labels: ["export", "planning"],
+      },
+    });
+
+    const tasksCsv = await request(app)
+      .get(`/api/v1/projects/${owner.projectId}/exports/tasks.csv`)
+      .query({ status: "TODO" })
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .expect(200)
+      .expect("Content-Type", /text\/csv/);
+
+    expect(tasksCsv.text).toContain("Export onboarding backlog");
+    expect(tasksCsv.text).toContain("Exportable onboarding");
+    expect(tasksCsv.text).toContain("Export Sprint");
+
+    const sprintsCsv = await request(app)
+      .get(`/api/v1/projects/${owner.projectId}/exports/sprints.csv`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .expect(200)
+      .expect("Content-Type", /text\/csv/);
+
+    expect(sprintsCsv.text).toContain("Export Sprint");
+    expect(sprintsCsv.text).toContain("Validate planning exports");
+
+    const planningJson = await request(app)
+      .get(`/api/v1/projects/${owner.projectId}/exports/planning.json`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .expect(200)
+      .expect("Content-Type", /application\/json/);
+
+    expect(planningJson.body.data.schemaVersion).toBe("planning-package-v1");
+    expect(planningJson.body.data.project.requirements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: requirement.body.data.requirement.id }),
+      ]),
+    );
+    expect(planningJson.body.data.project.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: task.id, title: "Export onboarding backlog" }),
+      ]),
+    );
+
+    const planningPdf = await request(app)
+      .get(`/api/v1/projects/${owner.projectId}/exports/planning.pdf`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .expect(200)
+      .expect("Content-Type", /application\/pdf/);
+
+    expect(Buffer.isBuffer(planningPdf.body)).toBe(true);
+    expect(planningPdf.body.subarray(0, 4).toString()).toBe("%PDF");
+
+    await request(app)
+      .get(`/api/v1/projects/${owner.projectId}/exports/planning.json`)
+      .set("Authorization", `Bearer ${outsider.accessToken}`)
+      .expect(404);
+  });
 });
 
 describe("backend integration test preflight", () => {
