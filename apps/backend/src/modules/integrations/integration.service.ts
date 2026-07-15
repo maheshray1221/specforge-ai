@@ -165,6 +165,84 @@ function createLinearDescription(task: {
   ].join("\n");
 }
 
+function parseJiraConfig(externalRef: string | null, config: unknown) {
+  const siteUrlValue = getRecordValue(config, "siteUrl");
+  const siteUrlText = typeof siteUrlValue === "string" && siteUrlValue.trim() ? siteUrlValue.trim() : externalRef?.trim();
+  if (!siteUrlText) throw new ApiError(400, "Jira integration requires siteUrl in config or external reference");
+
+  let siteUrl: URL;
+  try {
+    siteUrl = new URL(siteUrlText);
+  } catch {
+    throw new ApiError(400, "Jira siteUrl must be a valid URL");
+  }
+  if (siteUrl.protocol !== "https:") throw new ApiError(400, "Jira siteUrl must use HTTPS");
+
+  const projectKey = getRecordValue(config, "projectKey");
+  if (typeof projectKey !== "string" || !projectKey.trim()) {
+    throw new ApiError(400, "Jira integration requires projectKey in config");
+  }
+
+  const issueTypeValue = getRecordValue(config, "issueType");
+  const issueType = typeof issueTypeValue === "string" && issueTypeValue.trim() ? issueTypeValue.trim() : "Task";
+  const emailValue = getRecordValue(config, "email");
+  const authSchemeValue = getRecordValue(config, "authScheme");
+
+  return {
+    siteUrl: siteUrl.origin,
+    projectKey: projectKey.trim(),
+    issueType,
+    email: typeof emailValue === "string" && emailValue.trim() ? emailValue.trim() : null,
+    authScheme: typeof authSchemeValue === "string" ? authSchemeValue.toLowerCase() : "bearer",
+  };
+}
+
+function jiraDescriptionDocument(text: string) {
+  return {
+    type: "doc",
+    version: 1,
+    content: text.split("\n").map((line) => ({
+      type: "paragraph",
+      content: line ? [{ type: "text", text: line }] : [],
+    })),
+  };
+}
+
+function createJiraDescription(task: {
+  description: string;
+  type: string;
+  priority: string;
+  status: string;
+  storyPoints: number | null;
+  labels: string[];
+  assignee: { name: string; email: string } | null;
+  sprint: { name: string } | null;
+}) {
+  return [
+    task.description,
+    "",
+    "SpecForge metadata",
+    `Type: ${task.type}`,
+    `Priority: ${task.priority}`,
+    `Status: ${task.status}`,
+    `Story points: ${task.storyPoints ?? "Not estimated"}`,
+    `Sprint: ${task.sprint?.name ?? "Backlog"}`,
+    `Assignee: ${task.assignee ? `${task.assignee.name} <${task.assignee.email}>` : "Unassigned"}`,
+    `Labels: ${task.labels.length > 0 ? task.labels.join(", ") : "None"}`,
+    "",
+    "Created by SpecForge AI.",
+  ].join("\n");
+}
+
+function createJiraAuthHeader(token: string, input: { authScheme: string; email: string | null }) {
+  if (input.authScheme === "basic") {
+    if (!input.email) throw new ApiError(400, "Jira Basic auth requires email in integration config");
+    return `Basic ${Buffer.from(`${input.email}:${token}`).toString("base64")}`;
+  }
+
+  return `Bearer ${token}`;
+}
+
 export async function listProjectIntegrations(
   userId: string,
   projectId: string,
@@ -603,28 +681,125 @@ export async function executeProjectIntegration(userId: string, integrationId: s
   if (integration.provider === "JIRA") {
     const secret = await prisma.projectIntegrationSecret.findUnique({
       where: { integrationId_name: { integrationId, name: "accessToken" } },
-      select: { id: true },
+      select: { encryptedValue: true, iv: true, authTag: true },
     });
-    const message = secret
-      ? "Jira secure token is stored; real issue creation will be enabled in the next integration task"
-      : "Jira execution needs an accessToken secret before real issue creation can be enabled";
+    if (!secret) {
+      const message = "Jira execution needs an accessToken secret";
+      const run = await prisma.projectIntegrationRun.create({
+        data: {
+          integrationId,
+          projectId: integration.projectId,
+          actorId: userId,
+          action: input.action,
+          status: "ERROR",
+          requestSummary: toJsonObject(requestSummary),
+          errorMessage: message,
+        },
+        select: integrationRunSelect,
+      });
+      await prisma.projectIntegration.update({
+        where: { id: integrationId },
+        data: { lastError: message, status: "ERROR" },
+      });
+      return { run, delivered: false };
+    }
+
+    const jira = parseJiraConfig(integration.externalRef, integration.config);
+    const issues = input.action === "SEND_TEST"
+      ? [{
+          summary: `[SpecForge] Test issue for ${integration.project.name}`,
+          description: "This test issue confirms SpecForge AI can create Jira issues for this project.",
+          labels: ["specforge"],
+        }]
+      : tasks.slice(0, 20).map((task) => ({
+          summary: task.title,
+          description: createJiraDescription(task),
+          labels: [...new Set(["specforge", task.type, task.priority, ...task.labels])]
+            .map((label) => label.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, ""))
+            .filter(Boolean)
+            .slice(0, 10),
+        }));
+
+    if (issues.length === 0) throw new ApiError(400, "No tasks are available to export to Jira");
+
+    if (input.dryRun) {
+      const run = await prisma.projectIntegrationRun.create({
+        data: {
+          integrationId,
+          projectId: integration.projectId,
+          actorId: userId,
+          action: input.action,
+          status: "CONNECTED",
+          requestSummary: toJsonObject({ ...requestSummary, siteUrl: jira.siteUrl, projectKey: jira.projectKey, issueCount: issues.length }),
+          responseBody: "Jira dry run completed without creating issues",
+        },
+        select: integrationRunSelect,
+      });
+      return { run, delivered: false };
+    }
+
+    const token = decryptSecretValue(secret);
+    const createdIssues: Array<{ id: string; key: string; url: string }> = [];
+    let lastResponseCode: number | null = null;
+    let lastResponseBody = "";
+
+    for (const issue of issues) {
+      const response = await fetch(`${jira.siteUrl}/rest/api/3/issue`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: createJiraAuthHeader(token, jira),
+          "Content-Type": "application/json",
+          "User-Agent": "SpecForge-AI/1.0",
+        },
+        body: JSON.stringify({
+          fields: {
+            project: { key: jira.projectKey },
+            issuetype: { name: jira.issueType },
+            summary: issue.summary,
+            description: jiraDescriptionDocument(issue.description),
+            labels: issue.labels,
+          },
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      lastResponseCode = response.status;
+      lastResponseBody = truncateResponseBody(await response.text().catch(() => ""));
+
+      if (!response.ok) break;
+
+      const payload = JSON.parse(lastResponseBody) as { id?: string; key?: string; self?: string };
+      createdIssues.push({
+        id: payload.id ?? "",
+        key: payload.key ?? "",
+        url: payload.key ? `${jira.siteUrl}/browse/${payload.key}` : (payload.self ?? ""),
+      });
+    }
+
+    const delivered = createdIssues.length === issues.length;
+    const responseBody = JSON.stringify({ siteUrl: jira.siteUrl, projectKey: jira.projectKey, createdIssues, attempted: issues.length });
+    const errorMessage = delivered ? null : `Jira issue creation failed after ${createdIssues.length}/${issues.length} issue(s)`;
     const run = await prisma.projectIntegrationRun.create({
       data: {
         integrationId,
         projectId: integration.projectId,
         actorId: userId,
         action: input.action,
-        status: secret ? "PAUSED" : "ERROR",
-        requestSummary: toJsonObject(requestSummary),
-        errorMessage: message,
+        status: delivered ? "CONNECTED" : "ERROR",
+        requestSummary: toJsonObject({ ...requestSummary, siteUrl: jira.siteUrl, projectKey: jira.projectKey, issueCount: issues.length }),
+        responseCode: lastResponseCode,
+        responseBody: truncateResponseBody(responseBody.length > 20 ? responseBody : lastResponseBody),
+        errorMessage,
       },
       select: integrationRunSelect,
     });
     await prisma.projectIntegration.update({
       where: { id: integrationId },
-      data: { lastError: message, status: secret ? "PAUSED" : "ERROR" },
+      data: delivered
+        ? { lastSyncedAt: new Date(), lastError: null, status: "CONNECTED" }
+        : { lastError: errorMessage, status: "ERROR" },
     });
-    return { run, delivered: false };
+    return { run, delivered };
   }
 
   const targetUrl = assertPublicHttpsUrl(integration.externalRef);

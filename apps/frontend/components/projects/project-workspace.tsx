@@ -510,10 +510,10 @@ function IntegrationsPanel({
                     <Button size="sm" variant="outline" disabled={loading === `integration-${integration.id}`} onClick={() => void onUpdateStatus(integration, integration.status === "PAUSED" ? "CONNECTED" : "PAUSED")}>
                       {integration.status === "PAUSED" ? "Resume" : "Pause"}
                     </Button>
-                    <Button size="sm" variant="outline" disabled={loading === `integration-execute-${integration.id}`} onClick={() => void onExecute(integration, "SEND_TEST", integration.provider !== "WEBHOOK" && integration.provider !== "SLACK" && integration.provider !== "GITHUB" && integration.provider !== "LINEAR")}>
+                    <Button size="sm" variant="outline" disabled={loading === `integration-execute-${integration.id}`} onClick={() => void onExecute(integration, "SEND_TEST", integration.provider !== "WEBHOOK" && integration.provider !== "SLACK" && integration.provider !== "GITHUB" && integration.provider !== "LINEAR" && integration.provider !== "JIRA")}>
                       {loading === `integration-execute-${integration.id}` ? <><Spinner /> Running</> : "Test"}
                     </Button>
-                    <Button size="sm" variant="outline" disabled={loading === `integration-execute-${integration.id}`} onClick={() => void onExecute(integration, "EXPORT_TASKS", integration.provider !== "WEBHOOK" && integration.provider !== "SLACK" && integration.provider !== "GITHUB" && integration.provider !== "LINEAR")}>
+                    <Button size="sm" variant="outline" disabled={loading === `integration-execute-${integration.id}`} onClick={() => void onExecute(integration, "EXPORT_TASKS", integration.provider !== "WEBHOOK" && integration.provider !== "SLACK" && integration.provider !== "GITHUB" && integration.provider !== "LINEAR" && integration.provider !== "JIRA")}>
                       Export tasks
                     </Button>
                     <span className="text-xs text-slate-500">Updated {new Date(integration.updatedAt).toLocaleString()}</span>
