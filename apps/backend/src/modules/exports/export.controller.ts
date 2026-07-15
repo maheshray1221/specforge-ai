@@ -38,3 +38,14 @@ export const exportProjectPlanningJson: RequestHandler = async (req, res) => {
     data: planningPackage,
   });
 };
+
+export const exportProjectPlanningPdf: RequestHandler = async (req, res) => {
+  const pdf = await service.exportProjectPlanningPdf(
+    req.user!.id,
+    getRouteParam(req.params.projectId, "projectId"),
+  );
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="specforge-planning-${req.params.projectId}.pdf"`);
+  res.send(pdf);
+};

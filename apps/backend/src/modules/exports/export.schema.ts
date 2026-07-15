@@ -19,3 +19,7 @@ export const exportProjectSprintsSchema = z.object({
 export const exportProjectPlanningJsonSchema = z.object({
   params: z.object({ projectId: z.string().uuid() }),
 });
+
+export const exportProjectPlanningPdfSchema = z.object({
+  params: z.object({ projectId: z.string().uuid() }),
+});

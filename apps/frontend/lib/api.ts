@@ -255,3 +255,37 @@ export async function apiText(
 
   return response.text();
 }
+
+export async function apiBlob(
+  path: string,
+  init: RequestInit = {},
+  retry = true,
+): Promise<Blob> {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: createHeaders(init),
+  });
+
+  if (response.status === 401 && retry) {
+    const refreshed = await refreshAccessToken();
+
+    if (refreshed) {
+      return apiBlob(path, init, false);
+    }
+  }
+
+  if (!response.ok) {
+    const payload = (await response
+      .json()
+      .catch(() => null)) as ApiEnvelope<unknown> | null;
+
+    throw new ApiClientError(
+      payload?.error?.message ?? "Request failed",
+      response.status,
+      payload?.error?.details,
+    );
+  }
+
+  return response.blob();
+}
