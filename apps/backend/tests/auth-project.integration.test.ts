@@ -111,7 +111,7 @@ runIfDatabase("auth and project API integration", () => {
       .set("Authorization", `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(listedProjects.body.data.items).toEqual(
+    expect(listedProjects.body.data.projects).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: createdProject.body.data.project.id, key: "INT" }),
       ]),
