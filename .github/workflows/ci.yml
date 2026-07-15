@@ -10,6 +10,23 @@ jobs:
   quality:
     name: Build, tests, and E2E
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: specforge_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d specforge_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5433/specforge_test?schema=public
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/specforge_test?schema=public
 
     steps:
       - name: Checkout
@@ -26,6 +43,9 @@ jobs:
 
       - name: Generate Prisma client
         run: npm run db:generate
+
+      - name: Apply test database migrations
+        run: npm run db:deploy
 
       - name: Lint
         run: npm run lint
