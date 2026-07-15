@@ -8,7 +8,7 @@ export const create: RequestHandler = async (req, res) =>
     data: {
       requirement: await service.createRequirement(
         req.user!.id,
-        getRouteParam(req.params, "requirementId"),
+        getRouteParam(req.params.projectId, "projectId"),
         req.body,
       ),
     },
@@ -19,7 +19,7 @@ export const list: RequestHandler = async (req, res) =>
     data: {
       requirements: await service.listRequirements(
         req.user!.id,
-        getRouteParam(req.params, "requirementId"),
+        getRouteParam(req.params.projectId, "projectId"),
         req.query.status as string | undefined,
       ),
     },
