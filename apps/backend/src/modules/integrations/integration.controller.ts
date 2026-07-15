@@ -67,3 +67,36 @@ export const execute: RequestHandler = async (req, res) =>
       req.body,
     ),
   });
+
+export const listSecrets: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: {
+      secrets: await service.listProjectIntegrationSecrets(
+        req.user!.id,
+        getRouteParam(req.params.integrationId, "integrationId"),
+      ),
+    },
+  });
+
+export const upsertSecret: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: {
+      secret: await service.upsertProjectIntegrationSecret(
+        req.user!.id,
+        getRouteParam(req.params.integrationId, "integrationId"),
+        req.body,
+      ),
+    },
+  });
+
+export const deleteSecret: RequestHandler = async (req, res) => {
+  await service.deleteProjectIntegrationSecret(
+    req.user!.id,
+    getRouteParam(req.params.integrationId, "integrationId"),
+    getRouteParam(req.params.name, "name"),
+  );
+
+  res.status(204).send();
+};

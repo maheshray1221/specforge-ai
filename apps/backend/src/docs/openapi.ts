@@ -71,6 +71,11 @@ export const openApiDocument = {
     },
     "/integrations/{integrationId}/runs": { get: { tags: ["Integrations"], summary: "List integration execution runs", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "integrationId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Integration runs" } } } },
     "/integrations/{integrationId}/execute": { post: { tags: ["Integrations"], summary: "Execute integration delivery", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "integrationId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Integration execution result" } } } },
+    "/integrations/{integrationId}/secrets": {
+      get: { tags: ["Integrations"], summary: "List encrypted integration secret metadata", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "integrationId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Secret metadata without plaintext values" } } },
+      put: { tags: ["Integrations"], summary: "Create or rotate encrypted integration secret", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "integrationId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Secret metadata" } } },
+    },
+    "/integrations/{integrationId}/secrets/{name}": { delete: { tags: ["Integrations"], summary: "Delete encrypted integration secret", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "integrationId", required: true, schema: { type: "string", format: "uuid" } }, { in: "path", name: "name", required: true, schema: { type: "string" } }], responses: { "204": { description: "Secret deleted" } } } },
     "/projects/{projectId}/sprints": {
       post: { tags: ["Sprints"], summary: "Create sprint", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "201": { description: "Created" } } },
       get: { tags: ["Sprints"], summary: "List sprints", security: [{ bearerAuth: [] }], parameters: [{ in: "path", name: "projectId", required: true, schema: { type: "string", format: "uuid" } }], responses: { "200": { description: "Sprints" } } },

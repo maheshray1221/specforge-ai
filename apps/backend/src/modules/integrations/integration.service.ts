@@ -1,8 +1,9 @@
 import type { IntegrationProvider, IntegrationStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { ApiError } from "../../utils/api-error.js";
+import { encryptSecretValue } from "../../lib/encryption.js";
 import { ADMIN_ROLES, assertRole, getProjectAccess } from "../projects/project.access.js";
-import type { CreateProjectIntegrationInput, ExecuteProjectIntegrationInput, UpdateProjectIntegrationInput } from "./integration.schema.js";
+import type { CreateProjectIntegrationInput, ExecuteProjectIntegrationInput, UpdateProjectIntegrationInput, UpsertProjectIntegrationSecretInput } from "./integration.schema.js";
 
 const integrationSelect = {
   id: true,
@@ -30,6 +31,15 @@ const integrationRunSelect = {
   responseBody: true,
   errorMessage: true,
   createdAt: true,
+} as const;
+
+const integrationSecretSelect = {
+  id: true,
+  integrationId: true,
+  name: true,
+  keyFingerprint: true,
+  createdAt: true,
+  updatedAt: true,
 } as const;
 
 function assertPublicHttpsUrl(value: string | null) {
@@ -156,6 +166,58 @@ export async function listProjectIntegrationRuns(userId: string, integrationId: 
   });
 }
 
+async function assertIntegrationAdminAccess(userId: string, integrationId: string) {
+  const integration = await prisma.projectIntegration.findUnique({
+    where: { id: integrationId },
+    select: { projectId: true },
+  });
+  if (!integration) throw new ApiError(404, "Integration was not found");
+
+  const access = await getProjectAccess(userId, integration.projectId);
+  assertRole(access.role, ADMIN_ROLES, "Only owners or admins can manage integration secrets");
+
+  return integration;
+}
+
+export async function listProjectIntegrationSecrets(userId: string, integrationId: string) {
+  await assertIntegrationAdminAccess(userId, integrationId);
+
+  return prisma.projectIntegrationSecret.findMany({
+    where: { integrationId },
+    select: integrationSecretSelect,
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function upsertProjectIntegrationSecret(userId: string, integrationId: string, input: UpsertProjectIntegrationSecretInput) {
+  await assertIntegrationAdminAccess(userId, integrationId);
+  const encrypted = encryptSecretValue(input.value);
+
+  return prisma.projectIntegrationSecret.upsert({
+    where: { integrationId_name: { integrationId, name: input.name } },
+    update: encrypted,
+    create: {
+      integrationId,
+      name: input.name,
+      ...encrypted,
+    },
+    select: integrationSecretSelect,
+  });
+}
+
+export async function deleteProjectIntegrationSecret(userId: string, integrationId: string, name: string) {
+  await assertIntegrationAdminAccess(userId, integrationId);
+
+  await prisma.projectIntegrationSecret.delete({
+    where: { integrationId_name: { integrationId, name } },
+  }).catch((error: unknown) => {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2025") {
+      throw new ApiError(404, "Integration secret was not found");
+    }
+    throw error;
+  });
+}
+
 export async function executeProjectIntegration(userId: string, integrationId: string, input: ExecuteProjectIntegrationInput) {
   const integration = await prisma.projectIntegration.findUnique({
     where: { id: integrationId },
@@ -202,14 +264,20 @@ export async function executeProjectIntegration(userId: string, integrationId: s
   };
 
   if (["GITHUB", "JIRA", "LINEAR"].includes(integration.provider)) {
-    const message = "GitHub/Jira/Linear execution needs a secure secret-token store before real issue creation can be enabled";
+    const secret = await prisma.projectIntegrationSecret.findUnique({
+      where: { integrationId_name: { integrationId, name: "accessToken" } },
+      select: { id: true },
+    });
+    const message = secret
+      ? "GitHub/Jira/Linear secure token is stored; real issue creation will be enabled in the next integration task"
+      : "GitHub/Jira/Linear execution needs an accessToken secret before real issue creation can be enabled";
     const run = await prisma.projectIntegrationRun.create({
       data: {
         integrationId,
         projectId: integration.projectId,
         actorId: userId,
         action: input.action,
-        status: "ERROR",
+        status: secret ? "PAUSED" : "ERROR",
         requestSummary: toJsonObject(requestSummary),
         errorMessage: message,
       },
@@ -217,7 +285,7 @@ export async function executeProjectIntegration(userId: string, integrationId: s
     });
     await prisma.projectIntegration.update({
       where: { id: integrationId },
-      data: { lastError: message, status: "ERROR" },
+      data: { lastError: message, status: secret ? "PAUSED" : "ERROR" },
     });
     return { run, delivered: false };
   }

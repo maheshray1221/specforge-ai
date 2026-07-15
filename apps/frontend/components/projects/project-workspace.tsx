@@ -38,7 +38,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, apiBlob, apiText } from "@/lib/api";
-import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectIntegrationRun, ProjectInvitation, ProjectMember, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus, WorkspaceRole } from "@/lib/types";
+import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectIntegrationRun, ProjectIntegrationSecret, ProjectInvitation, ProjectMember, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus, WorkspaceRole } from "@/lib/types";
 
 const taskColumns: Array<{ key: TaskStatus; label: string }> = [
   { key: "BACKLOG", label: "Backlog" },
@@ -385,22 +385,32 @@ function CollaborationPanel({
 function IntegrationsPanel({
   integrations,
   runsByIntegration,
+  secretsByIntegration,
+  secretDrafts,
   draft,
   loading,
   onDraftChange,
+  onSecretDraftChange,
   onCreate,
   onUpdateStatus,
   onExecute,
+  onSaveSecret,
+  onDeleteSecret,
   onDelete,
 }: {
   integrations: ProjectIntegration[];
   runsByIntegration: Record<string, ProjectIntegrationRun[]>;
+  secretsByIntegration: Record<string, ProjectIntegrationSecret[]>;
+  secretDrafts: Record<string, string>;
   draft: { provider: IntegrationProvider; displayName: string; externalRef: string; config: string };
   loading: string;
   onDraftChange: (draft: { provider: IntegrationProvider; displayName: string; externalRef: string; config: string }) => void;
+  onSecretDraftChange: (integrationId: string, value: string) => void;
   onCreate: () => Promise<void>;
   onUpdateStatus: (integration: ProjectIntegration, status: IntegrationStatus) => Promise<void>;
   onExecute: (integration: ProjectIntegration, action: "SEND_TEST" | "EXPORT_TASKS", dryRun?: boolean) => Promise<void>;
+  onSaveSecret: (integration: ProjectIntegration) => Promise<void>;
+  onDeleteSecret: (integration: ProjectIntegration, name: ProjectIntegrationSecret["name"]) => Promise<void>;
   onDelete: (integration: ProjectIntegration) => Promise<void>;
 }) {
   return (
@@ -469,6 +479,33 @@ function IntegrationsPanel({
                     <Button size="icon" variant="ghost" onClick={() => void onDelete(integration)}><Trash2 className="h-4 w-4 text-rose-500" /></Button>
                   </div>
                   {integration.lastError && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-xs leading-5 text-rose-700">{integration.lastError}</p>}
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Secure secret</p>
+                    {(secretsByIntegration[integration.id] ?? []).length === 0 ? (
+                      <p className="mt-2 text-xs text-slate-500">No encrypted secret stored.</p>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {(secretsByIntegration[integration.id] ?? []).map((secret) => (
+                          <div key={secret.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2">
+                            <span className="text-xs text-slate-600">{secret.name} · key {secret.keyFingerprint}</span>
+                            <Button size="sm" variant="ghost" onClick={() => void onDeleteSecret(integration, secret.name)} disabled={loading === `integration-secret-${integration.id}`}>Remove</Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        value={secretDrafts[integration.id] ?? ""}
+                        onChange={(event) => onSecretDraftChange(integration.id, event.target.value)}
+                        placeholder="Paste access token once"
+                        type="password"
+                        className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none"
+                      />
+                      <Button size="sm" variant="outline" onClick={() => void onSaveSecret(integration)} disabled={loading === `integration-secret-${integration.id}` || !(secretDrafts[integration.id] ?? "").trim()}>
+                        {loading === `integration-secret-${integration.id}` ? <><Spinner /> Saving</> : "Save token"}
+                      </Button>
+                    </div>
+                  </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" disabled={loading === `integration-${integration.id}`} onClick={() => void onUpdateStatus(integration, integration.status === "PAUSED" ? "CONNECTED" : "PAUSED")}>
                       {integration.status === "PAUSED" ? "Resume" : "Pause"}
@@ -662,6 +699,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [inviteToken, setInviteToken] = useState("");
   const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
   const [integrationRuns, setIntegrationRuns] = useState<Record<string, ProjectIntegrationRun[]>>({});
+  const [integrationSecrets, setIntegrationSecrets] = useState<Record<string, ProjectIntegrationSecret[]>>({});
+  const [integrationSecretDrafts, setIntegrationSecretDrafts] = useState<Record<string, string>>({});
   const [integrationDraft, setIntegrationDraft] = useState<{ provider: IntegrationProvider; displayName: string; externalRef: string; config: string }>({
     provider: "GITHUB",
     displayName: "",
@@ -706,7 +745,16 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       setMembers(memberData.members);
       setInvitations(invitationData.invitations);
       setIntegrations(integrationData.integrations);
-      setIntegrationRuns({});
+      const integrationSnapshots = await Promise.allSettled(integrationData.integrations.map(async (integration) => {
+        const [runsData, secretsData] = await Promise.all([
+          api<{ runs: ProjectIntegrationRun[] }>(`/integrations/${integration.id}/runs`),
+          api<{ secrets: ProjectIntegrationSecret[] }>(`/integrations/${integration.id}/secrets`),
+        ]);
+        return { integrationId: integration.id, runs: runsData.runs, secrets: secretsData.secrets };
+      }));
+      setIntegrationRuns(Object.fromEntries(integrationSnapshots.flatMap((snapshot) => snapshot.status === "fulfilled" ? [[snapshot.value.integrationId, snapshot.value.runs]] : [])));
+      setIntegrationSecrets(Object.fromEntries(integrationSnapshots.flatMap((snapshot) => snapshot.status === "fulfilled" ? [[snapshot.value.integrationId, snapshot.value.secrets]] : [])));
+      setIntegrationSecretDrafts({});
       setSelectedRequirementId((current) => current || requirementData.requirements[0]?.id || "");
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "Project workspace could not be loaded");
@@ -1087,6 +1135,50 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  function updateIntegrationSecretDraft(integrationId: string, value: string) {
+    setIntegrationSecretDrafts((current) => ({ ...current, [integrationId]: value }));
+  }
+
+  async function refreshIntegrationSecrets(integrationId: string) {
+    const data = await api<{ secrets: ProjectIntegrationSecret[] }>(`/integrations/${integrationId}/secrets`);
+    setIntegrationSecrets((current) => ({ ...current, [integrationId]: data.secrets }));
+  }
+
+  async function saveIntegrationSecret(integration: ProjectIntegration) {
+    const value = integrationSecretDrafts[integration.id]?.trim();
+    if (!value) return;
+    setAction(`integration-secret-${integration.id}`);
+    setError("");
+    try {
+      const data = await api<{ secret: ProjectIntegrationSecret }>(`/integrations/${integration.id}/secrets`, {
+        method: "PUT",
+        body: JSON.stringify({ name: "accessToken", value }),
+      });
+      setIntegrationSecrets((current) => ({
+        ...current,
+        [integration.id]: [data.secret, ...(current[integration.id] ?? []).filter((secret) => secret.name !== data.secret.name)],
+      }));
+      setIntegrationSecretDrafts((current) => ({ ...current, [integration.id]: "" }));
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Integration secret could not be saved");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function deleteIntegrationSecret(integration: ProjectIntegration, name: ProjectIntegrationSecret["name"]) {
+    setAction(`integration-secret-${integration.id}`);
+    setError("");
+    try {
+      await api(`/integrations/${integration.id}/secrets/${name}`, { method: "DELETE" });
+      await refreshIntegrationSecrets(integration.id);
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Integration secret could not be removed");
+    } finally {
+      setAction("");
+    }
+  }
+
   async function deleteIntegration(integration: ProjectIntegration) {
     setAction(`integration-${integration.id}`);
     setError("");
@@ -1225,12 +1317,17 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
           <IntegrationsPanel
             integrations={integrations}
             runsByIntegration={integrationRuns}
+            secretsByIntegration={integrationSecrets}
+            secretDrafts={integrationSecretDrafts}
             draft={integrationDraft}
             loading={action}
             onDraftChange={setIntegrationDraft}
+            onSecretDraftChange={updateIntegrationSecretDraft}
             onCreate={createIntegration}
             onUpdateStatus={updateIntegrationStatus}
             onExecute={executeIntegration}
+            onSaveSecret={saveIntegrationSecret}
+            onDeleteSecret={deleteIntegrationSecret}
             onDelete={deleteIntegration}
           />
         </TabsContent>

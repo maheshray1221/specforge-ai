@@ -24,6 +24,7 @@ const schema = z.object({
   SENTRY_DSN: z.string().url().optional(),
   SENTRY_ENVIRONMENT: z.string().optional(),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
+  INTEGRATION_SECRET_KEY: z.string().min(32).optional(),
 });
 
 const parsed = schema.safeParse(process.env);

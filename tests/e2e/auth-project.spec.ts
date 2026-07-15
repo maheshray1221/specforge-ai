@@ -597,6 +597,24 @@ test("user resolves clarifications, approves a requirement, and generates tasks"
       return;
     }
 
+    if (path === `/integrations/${integrations[0].id}/runs` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { runs: [] } }),
+      });
+      return;
+    }
+
+    if (path === `/integrations/${integrations[0].id}/secrets` && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { secrets: [] } }),
+      });
+      return;
+    }
+
     if (path === `/integrations/${integrations[0].id}` && request.method() === "PATCH") {
       const payload = await request.postDataJSON();
       integrations = integrations.map((integration) => ({

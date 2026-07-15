@@ -136,6 +136,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/specforge?schema=publ
 GROQ_MODEL=openai/gpt-oss-120b
 COOKIE_SECURE=false
 SENTRY_DSN=
+INTEGRATION_SECRET_KEY=your_generated_integration_secret
 ```
 
 Frontend (`apps/frontend/.env.local`):
@@ -146,6 +147,8 @@ NEXT_PUBLIC_SENTRY_DSN=
 ```
 
 For production, set `NODE_ENV=production`, use HTTPS, use a managed PostgreSQL URL, and set `FRONTEND_URL` to the deployed frontend origin. Auth cookies are configured as `Secure` + `SameSite=None` automatically in production and `SameSite=Lax` locally.
+
+`INTEGRATION_SECRET_KEY` encrypts integration tokens before they are stored. Use a strong random value and keep it stable across deploys; rotating it requires re-saving integration secrets.
 
 ## Deployment readiness
 

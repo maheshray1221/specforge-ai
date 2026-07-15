@@ -56,6 +56,26 @@ export const listProjectIntegrationRunsSchema = z.object({
   params: z.object({ integrationId: z.string().uuid() }),
 });
 
+export const listProjectIntegrationSecretsSchema = z.object({
+  params: z.object({ integrationId: z.string().uuid() }),
+});
+
+export const upsertProjectIntegrationSecretSchema = z.object({
+  params: z.object({ integrationId: z.string().uuid() }),
+  body: z.object({
+    name: z.enum(["accessToken", "webhookSigningSecret", "apiKey"]).default("accessToken"),
+    value: z.string().trim().min(8).max(4000),
+  }),
+});
+
+export const deleteProjectIntegrationSecretSchema = z.object({
+  params: z.object({
+    integrationId: z.string().uuid(),
+    name: z.enum(["accessToken", "webhookSigningSecret", "apiKey"]),
+  }),
+});
+
 export type CreateProjectIntegrationInput = z.infer<typeof createProjectIntegrationSchema>["body"];
 export type UpdateProjectIntegrationInput = z.infer<typeof updateProjectIntegrationSchema>["body"];
 export type ExecuteProjectIntegrationInput = z.infer<typeof executeProjectIntegrationSchema>["body"];
+export type UpsertProjectIntegrationSecretInput = z.infer<typeof upsertProjectIntegrationSecretSchema>["body"];

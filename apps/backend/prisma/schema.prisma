@@ -247,9 +247,26 @@ model ProjectIntegration {
   updatedAt      DateTime            @updatedAt
   project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   runs           ProjectIntegrationRun[]
+  secrets        ProjectIntegrationSecret[]
 
   @@unique([projectId, provider, displayName])
   @@index([projectId, provider, status])
+}
+
+model ProjectIntegrationSecret {
+  id             String             @id @default(uuid())
+  integrationId  String
+  name           String
+  encryptedValue String
+  iv             String
+  authTag        String
+  keyFingerprint String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  integration    ProjectIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, name])
+  @@index([integrationId])
 }
 
 model ProjectIntegrationRun {

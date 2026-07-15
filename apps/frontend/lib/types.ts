@@ -136,6 +136,15 @@ export interface ProjectIntegrationRun {
   createdAt: string;
 }
 
+export interface ProjectIntegrationSecret {
+  id: string;
+  integrationId: string;
+  name: "accessToken" | "webhookSigningSecret" | "apiKey";
+  keyFingerprint: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RequirementVersion {
   id: string;
   versionNumber: number;
