@@ -22,6 +22,23 @@ export const listProjectMembersSchema = z.object({
   params: z.object({ projectId: z.string().uuid() }),
 });
 
+export const updateProjectMemberSchema = z.object({
+  params: z.object({
+    projectId: z.string().uuid(),
+    memberId: z.string().uuid(),
+  }),
+  body: z.object({
+    role: z.enum(["ADMIN", "MEMBER", "VIEWER"]),
+  }),
+});
+
+export const removeProjectMemberSchema = z.object({
+  params: z.object({
+    projectId: z.string().uuid(),
+    memberId: z.string().uuid(),
+  }),
+});
+
 export const listProjectInvitationsSchema = z.object({
   params: z.object({ projectId: z.string().uuid() }),
 });
@@ -46,5 +63,6 @@ export const acceptProjectInvitationSchema = z.object({
 });
 
 export type CreateTaskCommentInput = z.infer<typeof createTaskCommentSchema>["body"];
+export type UpdateProjectMemberInput = z.infer<typeof updateProjectMemberSchema>["body"];
 export type CreateProjectInvitationInput = z.infer<typeof createProjectInvitationSchema>["body"];
 export type AcceptProjectInvitationInput = z.infer<typeof acceptProjectInvitationSchema>["body"];

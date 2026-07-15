@@ -3,7 +3,7 @@ import type { WorkspaceRole } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { ApiError } from "../../utils/api-error.js";
 import { ADMIN_ROLES, WRITE_ROLES, assertRole, getProjectAccess, getWorkspaceAccess } from "../projects/project.access.js";
-import type { AcceptProjectInvitationInput, CreateProjectInvitationInput, CreateTaskCommentInput } from "./collaboration.schema.js";
+import type { AcceptProjectInvitationInput, CreateProjectInvitationInput, CreateTaskCommentInput, UpdateProjectMemberInput } from "./collaboration.schema.js";
 
 const commentSelect = {
   id: true,
@@ -117,6 +117,73 @@ export async function listProjectMembers(userId: string, projectId: string) {
     where: { workspaceId: access.workspaceId },
     select: memberSelect,
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+  });
+}
+
+async function assertCanChangeMember(userId: string, projectId: string, memberId: string) {
+  const access = await getProjectAccess(userId, projectId);
+  assertRole(access.role, ADMIN_ROLES, "Only admins can manage project members");
+
+  const member = await prisma.workspaceMember.findFirst({
+    where: { id: memberId, workspaceId: access.workspaceId },
+    select: { id: true, userId: true, role: true, workspaceId: true },
+  });
+  if (!member) throw new ApiError(404, "Workspace member was not found");
+
+  if (member.userId === userId) throw new ApiError(409, "You cannot change your own membership");
+
+  return { access, member };
+}
+
+async function assertOwnerWillRemain(workspaceId: string, memberId: string) {
+  const ownerCount = await prisma.workspaceMember.count({
+    where: { workspaceId, role: "OWNER", id: { not: memberId } },
+  });
+  if (ownerCount === 0) throw new ApiError(409, "At least one workspace owner must remain");
+}
+
+export async function updateProjectMember(userId: string, projectId: string, memberId: string, input: UpdateProjectMemberInput) {
+  const { access, member } = await assertCanChangeMember(userId, projectId, memberId);
+  if (member.role === "OWNER") await assertOwnerWillRemain(access.workspaceId, memberId);
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.workspaceMember.update({
+      where: { id: memberId },
+      data: { role: input.role as WorkspaceRole },
+      select: memberSelect,
+    });
+
+    await tx.projectActivity.create({
+      data: {
+        projectId,
+        actorId: userId,
+        action: "MEMBER_ROLE_UPDATED",
+        entityType: "WORKSPACE_MEMBER",
+        entityId: memberId,
+        metadata: { role: input.role, userId: member.userId },
+      },
+    });
+
+    return updated;
+  });
+}
+
+export async function removeProjectMember(userId: string, projectId: string, memberId: string) {
+  const { access, member } = await assertCanChangeMember(userId, projectId, memberId);
+  if (member.role === "OWNER") await assertOwnerWillRemain(access.workspaceId, memberId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.workspaceMember.delete({ where: { id: memberId } });
+    await tx.projectActivity.create({
+      data: {
+        projectId,
+        actorId: userId,
+        action: "MEMBER_REMOVED",
+        entityType: "WORKSPACE_MEMBER",
+        entityId: memberId,
+        metadata: { userId: member.userId },
+      },
+    });
   });
 }
 

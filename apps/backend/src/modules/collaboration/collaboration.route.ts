@@ -12,6 +12,8 @@ import {
   listProjectInvitationsSchema,
   listProjectMembersSchema,
   listTaskCommentsSchema,
+  removeProjectMemberSchema,
+  updateProjectMemberSchema,
 } from "./collaboration.schema.js";
 
 export const collaborationRouter = Router();
@@ -21,6 +23,8 @@ collaborationRouter.get("/tasks/:taskId/comments", validate(listTaskCommentsSche
 collaborationRouter.post("/tasks/:taskId/comments", validate(createTaskCommentSchema), asyncHandler(controller.createTaskComment));
 collaborationRouter.get("/projects/:projectId/activity", validate(listProjectActivitySchema), asyncHandler(controller.listProjectActivity));
 collaborationRouter.get("/projects/:projectId/members", validate(listProjectMembersSchema), asyncHandler(controller.listProjectMembers));
+collaborationRouter.patch("/projects/:projectId/members/:memberId", validate(updateProjectMemberSchema), asyncHandler(controller.updateProjectMember));
+collaborationRouter.delete("/projects/:projectId/members/:memberId", validate(removeProjectMemberSchema), asyncHandler(controller.removeProjectMember));
 collaborationRouter.get("/projects/:projectId/invitations", validate(listProjectInvitationsSchema), asyncHandler(controller.listProjectInvitations));
 collaborationRouter.post("/projects/:projectId/invitations", validate(createProjectInvitationSchema), asyncHandler(controller.createProjectInvitation));
 collaborationRouter.delete("/invitations/:invitationId", validate(cancelProjectInvitationSchema), asyncHandler(controller.cancelProjectInvitation));

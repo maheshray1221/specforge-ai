@@ -48,6 +48,29 @@ export const listProjectMembers: RequestHandler = async (req, res) =>
     },
   });
 
+export const updateProjectMember: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: {
+      member: await service.updateProjectMember(
+        req.user!.id,
+        getRouteParam(req.params.projectId, "projectId"),
+        getRouteParam(req.params.memberId, "memberId"),
+        req.body,
+      ),
+    },
+  });
+
+export const removeProjectMember: RequestHandler = async (req, res) => {
+  await service.removeProjectMember(
+    req.user!.id,
+    getRouteParam(req.params.projectId, "projectId"),
+    getRouteParam(req.params.memberId, "memberId"),
+  );
+
+  res.status(204).send();
+};
+
 export const listProjectInvitations: RequestHandler = async (req, res) =>
   res.json({
     success: true,

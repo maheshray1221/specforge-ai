@@ -234,6 +234,8 @@ function CollaborationPanel({
   onInviteDraftChange,
   onCreateInvitation,
   onCancelInvitation,
+  onUpdateMemberRole,
+  onRemoveMember,
   onMarkRead,
 }: {
   activity: ProjectActivity[];
@@ -246,6 +248,8 @@ function CollaborationPanel({
   onInviteDraftChange: (draft: { email: string; role: Exclude<WorkspaceRole, "OWNER"> }) => void;
   onCreateInvitation: () => Promise<void>;
   onCancelInvitation: (invitation: ProjectInvitation) => Promise<void>;
+  onUpdateMemberRole: (member: ProjectMember, role: Exclude<WorkspaceRole, "OWNER">) => Promise<void>;
+  onRemoveMember: (member: ProjectMember) => Promise<void>;
   onMarkRead: (notificationId: string) => Promise<void>;
 }) {
   const unread = notifications.filter((notification) => !notification.readAt);
@@ -298,12 +302,31 @@ function CollaborationPanel({
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active members</p>
                 {members.map((member) => (
-                  <div key={member.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3">
+                  <div key={member.id} className="rounded-2xl border border-slate-200 p-3">
+                    <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{member.user.name}</p>
                       <p className="text-xs text-slate-500">{member.user.email}</p>
                     </div>
                     <Badge>{member.role}</Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <select
+                        aria-label={`Role for ${member.user.name}`}
+                        value={member.role}
+                        disabled={member.role === "OWNER" || loading === `member-${member.id}`}
+                        onChange={(event) => void onUpdateMemberRole(member, event.target.value as Exclude<WorkspaceRole, "OWNER">)}
+                        className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none"
+                      >
+                        {member.role === "OWNER" && <option value="OWNER">Owner</option>}
+                        <option value="ADMIN">Admin</option>
+                        <option value="MEMBER">Member</option>
+                        <option value="VIEWER">Viewer</option>
+                      </select>
+                      <Button size="sm" variant="outline" disabled={member.role === "OWNER" || loading === `member-${member.id}`} onClick={() => void onRemoveMember(member)}>
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1075,6 +1098,39 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  async function updateMemberRole(member: ProjectMember, role: Exclude<WorkspaceRole, "OWNER">) {
+    setAction(`member-${member.id}`);
+    setError("");
+    try {
+      const data = await api<{ member: ProjectMember }>(`/projects/${projectId}/members/${member.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      });
+      setMembers((current) => current.map((item) => item.id === member.id ? data.member : item));
+      const refreshed = await api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`);
+      setActivity(refreshed.activity);
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Member role could not be updated");
+    } finally {
+      setAction("");
+    }
+  }
+
+  async function removeMember(member: ProjectMember) {
+    setAction(`member-${member.id}`);
+    setError("");
+    try {
+      await api(`/projects/${projectId}/members/${member.id}`, { method: "DELETE" });
+      setMembers((current) => current.filter((item) => item.id !== member.id));
+      const refreshed = await api<{ activity: ProjectActivity[] }>(`/projects/${projectId}/activity?limit=25`);
+      setActivity(refreshed.activity);
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Member could not be removed");
+    } finally {
+      setAction("");
+    }
+  }
+
   async function createIntegration() {
     setAction("integration-create");
     setError("");
@@ -1309,6 +1365,8 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
             onInviteDraftChange={setInviteDraft}
             onCreateInvitation={createInvitation}
             onCancelInvitation={cancelInvitation}
+            onUpdateMemberRole={updateMemberRole}
+            onRemoveMember={removeMember}
             onMarkRead={markNotificationRead}
           />
         </TabsContent>
