@@ -30,7 +30,7 @@ export const getOne: RequestHandler = async (req, res) =>
     data: {
       requirement: await service.getRequirement(
         req.user!.id,
-        getRouteParam(req.params, "requirementId"),
+        getRouteParam(req.params.requirementId, "requirementId"),
       ),
     },
   });
@@ -40,7 +40,7 @@ export const update: RequestHandler = async (req, res) =>
     data: {
       requirement: await service.updateRequirement(
         req.user!.id,
-        getRouteParam(req.params, "requirementId"),
+        getRouteParam(req.params.requirementId, "requirementId"),
         req.body,
       ),
     },
@@ -48,7 +48,7 @@ export const update: RequestHandler = async (req, res) =>
 export const remove: RequestHandler = async (req, res) => {
   await service.deleteRequirement(
     req.user!.id,
-    getRouteParam(req.params, "requirementId"),
+    getRouteParam(req.params.requirementId, "requirementId"),
   );
   res.status(204).send();
 };

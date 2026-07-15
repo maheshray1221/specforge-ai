@@ -8,7 +8,7 @@ export const create: RequestHandler = async (req, res) =>
     data: {
       sprint: await service.createSprint(
         req.user!.id,
-        getRouteParam(req.params, "projectId"),
+        getRouteParam(req.params.projectId, "projectId"),
         req.body,
       ),
     },
@@ -19,7 +19,7 @@ export const list: RequestHandler = async (req, res) =>
     data: {
       sprints: await service.listSprints(
         req.user!.id,
-        getRouteParam(req.params, "projectId"),
+        getRouteParam(req.params.projectId, "projectId"),
       ),
     },
   });
@@ -29,7 +29,7 @@ export const update: RequestHandler = async (req, res) =>
     data: {
       sprint: await service.updateSprint(
         req.user!.id,
-        getRouteParam(req.params, "sprintId"),
+        getRouteParam(req.params.sprintId, "sprintId"),
         req.body,
       ),
     },
@@ -40,8 +40,8 @@ export const addTask: RequestHandler = async (req, res) =>
     data: {
       sprint: await service.addTask(
         req.user!.id,
-        getRouteParam(req.params, "sprintId"),
-        getRouteParam(req.params, "taskId"),
+        getRouteParam(req.params.sprintId, "sprintId"),
+        getRouteParam(req.params.taskId, "taskId"),
       ),
     },
   });
@@ -51,8 +51,8 @@ export const removeTask: RequestHandler = async (req, res) =>
     data: {
       sprint: await service.removeTask(
         req.user!.id,
-        getRouteParam(req.params, "sprintId"),
-        getRouteParam(req.params, "taskId"),
+        getRouteParam(req.params.sprintId, "sprintId"),
+        getRouteParam(req.params.taskId, "taskId"),
       ),
     },
   });
