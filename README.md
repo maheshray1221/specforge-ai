@@ -188,6 +188,14 @@ npm run test:integration:backend
 
 When `TEST_DATABASE_URL` is not set, the preflight test passes and DB-backed cases are skipped.
 
+## Frontend component tests
+
+Component tests run in Vitest with jsdom and cover focused UI behavior such as auth form validation and submit flows:
+
+```powershell
+npm run test:components:frontend
+```
+
 ## API overview
 
 ```text

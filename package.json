@@ -9,6 +9,7 @@
     "build": "npm run build -w @specforge/backend && npm run build -w @specforge/frontend",
     "lint": "npm run lint -w @specforge/backend && npm run lint -w @specforge/frontend",
     "test:integration:backend": "npm run test:integration -w @specforge/backend",
+    "test:components:frontend": "npm run test:components -w @specforge/frontend",
     "test:e2e": "playwright test",
     "db:generate": "npm run prisma:generate -w @specforge/backend",
     "db:migrate": "npm run prisma:migrate -w @specforge/backend",
