@@ -8,7 +8,7 @@ on:
 
 jobs:
   quality:
-    name: Build, lint, typecheck, and E2E
+    name: Build, tests, and E2E
     runs-on: ubuntu-latest
 
     steps:
@@ -35,6 +35,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Run frontend component tests
+        run: npm run test:components:frontend
+
+      - name: Run backend integration preflight
+        run: npm run test:integration:backend
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
