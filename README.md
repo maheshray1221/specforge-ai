@@ -176,6 +176,18 @@ npm run deploy:smoke
 
 See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the full deployment runbook, required environment values, rollback steps, backup/restore drill, and manual pilot smoke flow.
 
+## Backend integration tests
+
+DB-backed backend integration tests are gated behind a dedicated test database URL so local runs do not mutate development data:
+
+```powershell
+$env:TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5433/specforge_test?schema=public"
+npm run db:deploy
+npm run test:integration:backend
+```
+
+When `TEST_DATABASE_URL` is not set, the preflight test passes and DB-backed cases are skipped.
+
 ## API overview
 
 ```text
@@ -214,6 +226,6 @@ DELETE /api/v1/sprints/:sprintId/tasks/:taskId
 
 ## Notes
 
-- No automated test or test-case files are included, as requested.
+- E2E tests cover the core browser flow, and backend integration tests can run against a dedicated PostgreSQL database.
 - AI calls run synchronously in the MVP. A Redis/BullMQ worker can be added later when usage grows.
 - Projects are archived rather than permanently deleted.

@@ -8,6 +8,7 @@
     "dev": "concurrently -n backend,frontend -c blue,magenta \"npm run dev -w @specforge/backend\" \"npm run dev -w @specforge/frontend\"",
     "build": "npm run build -w @specforge/backend && npm run build -w @specforge/frontend",
     "lint": "npm run lint -w @specforge/backend && npm run lint -w @specforge/frontend",
+    "test:integration:backend": "npm run test:integration -w @specforge/backend",
     "test:e2e": "playwright test",
     "db:generate": "npm run prisma:generate -w @specforge/backend",
     "db:migrate": "npm run prisma:migrate -w @specforge/backend",
