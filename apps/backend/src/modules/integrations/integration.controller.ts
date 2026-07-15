@@ -46,3 +46,24 @@ export const remove: RequestHandler = async (req, res) => {
 
   res.status(204).send();
 };
+
+export const listRuns: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: {
+      runs: await service.listProjectIntegrationRuns(
+        req.user!.id,
+        getRouteParam(req.params.integrationId, "integrationId"),
+      ),
+    },
+  });
+
+export const execute: RequestHandler = async (req, res) =>
+  res.json({
+    success: true,
+    data: await service.executeProjectIntegration(
+      req.user!.id,
+      getRouteParam(req.params.integrationId, "integrationId"),
+      req.body,
+    ),
+  });

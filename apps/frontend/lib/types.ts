@@ -122,6 +122,20 @@ export interface ProjectIntegration {
   updatedAt: string;
 }
 
+export interface ProjectIntegrationRun {
+  id: string;
+  integrationId: string;
+  projectId: string;
+  actorId: string;
+  action: string;
+  status: IntegrationStatus;
+  requestSummary: Record<string, unknown>;
+  responseCode: number | null;
+  responseBody: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
 export interface RequirementVersion {
   id: string;
   versionNumber: number;

@@ -131,6 +131,7 @@ model User {
   notifications  Notification[]
   analyticsEvents AnalyticsEvent[]
   aiJobs          AIJob[]
+  integrationRuns ProjectIntegrationRun[]
 }
 
 model RefreshToken {
@@ -205,6 +206,7 @@ model Project {
   sprints       Sprint[]
   aiJobs        AIJob[]
   integrations  ProjectIntegration[]
+  integrationRuns ProjectIntegrationRun[]
   taskComments  TaskComment[]
   activities    ProjectActivity[]
   notifications Notification[]
@@ -244,9 +246,30 @@ model ProjectIntegration {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   project        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runs           ProjectIntegrationRun[]
 
   @@unique([projectId, provider, displayName])
   @@index([projectId, provider, status])
+}
+
+model ProjectIntegrationRun {
+  id            String             @id @default(uuid())
+  integrationId String
+  projectId     String
+  actorId       String
+  action        String
+  status        IntegrationStatus
+  requestSummary Json              @default("{}")
+  responseCode  Int?
+  responseBody  String?
+  errorMessage  String?
+  createdAt     DateTime           @default(now())
+  integration   ProjectIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor         User               @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId, createdAt])
+  @@index([projectId, createdAt])
 }
 
 model Requirement {

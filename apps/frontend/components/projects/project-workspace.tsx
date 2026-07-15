@@ -38,7 +38,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiClientError, apiBlob, apiText } from "@/lib/api";
-import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectInvitation, ProjectMember, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus, WorkspaceRole } from "@/lib/types";
+import type { AIAnalysis, IntegrationProvider, IntegrationStatus, Notification, Project, ProjectActivity, ProjectAnalyticsSummary, ProjectIntegration, ProjectIntegrationRun, ProjectInvitation, ProjectMember, ProjectUsage, Requirement, Sprint, Task, TaskComment, TaskStatus, WorkspaceRole } from "@/lib/types";
 
 const taskColumns: Array<{ key: TaskStatus; label: string }> = [
   { key: "BACKLOG", label: "Backlog" },
@@ -384,19 +384,23 @@ function CollaborationPanel({
 
 function IntegrationsPanel({
   integrations,
+  runsByIntegration,
   draft,
   loading,
   onDraftChange,
   onCreate,
   onUpdateStatus,
+  onExecute,
   onDelete,
 }: {
   integrations: ProjectIntegration[];
+  runsByIntegration: Record<string, ProjectIntegrationRun[]>;
   draft: { provider: IntegrationProvider; displayName: string; externalRef: string; config: string };
   loading: string;
   onDraftChange: (draft: { provider: IntegrationProvider; displayName: string; externalRef: string; config: string }) => void;
   onCreate: () => Promise<void>;
   onUpdateStatus: (integration: ProjectIntegration, status: IntegrationStatus) => Promise<void>;
+  onExecute: (integration: ProjectIntegration, action: "SEND_TEST" | "EXPORT_TASKS", dryRun?: boolean) => Promise<void>;
   onDelete: (integration: ProjectIntegration) => Promise<void>;
 }) {
   return (
@@ -469,8 +473,29 @@ function IntegrationsPanel({
                     <Button size="sm" variant="outline" disabled={loading === `integration-${integration.id}`} onClick={() => void onUpdateStatus(integration, integration.status === "PAUSED" ? "CONNECTED" : "PAUSED")}>
                       {integration.status === "PAUSED" ? "Resume" : "Pause"}
                     </Button>
+                    <Button size="sm" variant="outline" disabled={loading === `integration-execute-${integration.id}`} onClick={() => void onExecute(integration, "SEND_TEST", integration.provider !== "WEBHOOK" && integration.provider !== "SLACK")}>
+                      {loading === `integration-execute-${integration.id}` ? <><Spinner /> Running</> : "Test"}
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={loading === `integration-execute-${integration.id}`} onClick={() => void onExecute(integration, "EXPORT_TASKS", integration.provider !== "WEBHOOK" && integration.provider !== "SLACK")}>
+                      Export tasks
+                    </Button>
                     <span className="text-xs text-slate-500">Updated {new Date(integration.updatedAt).toLocaleString()}</span>
                   </div>
+                  {(runsByIntegration[integration.id] ?? []).length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent runs</p>
+                      {(runsByIntegration[integration.id] ?? []).slice(0, 3).map((run) => (
+                        <div key={run.id} className="rounded-xl bg-slate-50 p-3 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-700">{run.action.replaceAll("_", " ")}</span>
+                            <Badge className={run.status === "ERROR" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>{run.status}</Badge>
+                          </div>
+                          <p className="mt-1 text-slate-500">{new Date(run.createdAt).toLocaleString()}{run.responseCode ? ` · HTTP ${run.responseCode}` : ""}</p>
+                          {run.errorMessage && <p className="mt-1 text-rose-700">{run.errorMessage}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -636,6 +661,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [inviteDraft, setInviteDraft] = useState<{ email: string; role: Exclude<WorkspaceRole, "OWNER"> }>({ email: "", role: "MEMBER" });
   const [inviteToken, setInviteToken] = useState("");
   const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
+  const [integrationRuns, setIntegrationRuns] = useState<Record<string, ProjectIntegrationRun[]>>({});
   const [integrationDraft, setIntegrationDraft] = useState<{ provider: IntegrationProvider; displayName: string; externalRef: string; config: string }>({
     provider: "GITHUB",
     displayName: "",
@@ -680,6 +706,7 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
       setMembers(memberData.members);
       setInvitations(invitationData.invitations);
       setIntegrations(integrationData.integrations);
+      setIntegrationRuns({});
       setSelectedRequirementId((current) => current || requirementData.requirements[0]?.id || "");
     } catch (reason) {
       setError(reason instanceof ApiClientError ? reason.message : "Project workspace could not be loaded");
@@ -1039,6 +1066,27 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
+  async function executeIntegration(integration: ProjectIntegration, runAction: "SEND_TEST" | "EXPORT_TASKS", dryRun = false) {
+    setAction(`integration-execute-${integration.id}`);
+    setError("");
+    try {
+      const data = await api<{ run: ProjectIntegrationRun; delivered: boolean }>(`/integrations/${integration.id}/execute`, {
+        method: "POST",
+        body: JSON.stringify({ action: runAction, dryRun }),
+      });
+      setIntegrationRuns((current) => ({
+        ...current,
+        [integration.id]: [data.run, ...(current[integration.id] ?? [])].slice(0, 5),
+      }));
+      const refreshed = await api<{ integrations: ProjectIntegration[] }>(`/projects/${projectId}/integrations`);
+      setIntegrations(refreshed.integrations);
+    } catch (reason) {
+      setError(reason instanceof ApiClientError ? reason.message : "Integration execution failed");
+    } finally {
+      setAction("");
+    }
+  }
+
   async function deleteIntegration(integration: ProjectIntegration) {
     setAction(`integration-${integration.id}`);
     setError("");
@@ -1176,11 +1224,13 @@ export function ProjectWorkspace({ projectId }: { projectId: string }) {
         <TabsContent value="integrations">
           <IntegrationsPanel
             integrations={integrations}
+            runsByIntegration={integrationRuns}
             draft={integrationDraft}
             loading={action}
             onDraftChange={setIntegrationDraft}
             onCreate={createIntegration}
             onUpdateStatus={updateIntegrationStatus}
+            onExecute={executeIntegration}
             onDelete={deleteIntegration}
           />
         </TabsContent>

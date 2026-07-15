@@ -43,5 +43,19 @@ export const integrationIdSchema = z.object({
   params: z.object({ integrationId: z.string().uuid() }),
 });
 
+export const executeProjectIntegrationSchema = z.object({
+  params: z.object({ integrationId: z.string().uuid() }),
+  body: z.object({
+    action: z.enum(["SEND_TEST", "EXPORT_TASKS"]).default("SEND_TEST"),
+    taskIds: z.array(z.string().uuid()).max(100).default([]),
+    dryRun: z.boolean().default(false),
+  }).default({ action: "SEND_TEST", taskIds: [], dryRun: false }),
+});
+
+export const listProjectIntegrationRunsSchema = z.object({
+  params: z.object({ integrationId: z.string().uuid() }),
+});
+
 export type CreateProjectIntegrationInput = z.infer<typeof createProjectIntegrationSchema>["body"];
 export type UpdateProjectIntegrationInput = z.infer<typeof updateProjectIntegrationSchema>["body"];
+export type ExecuteProjectIntegrationInput = z.infer<typeof executeProjectIntegrationSchema>["body"];
