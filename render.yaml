@@ -1,0 +1,78 @@
+services:
+  - type: web
+    name: specforge-ai-api
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm ci && npm run db:generate && npm run build -w @specforge/backend
+    preDeployCommand: npm run db:deploy
+    startCommand: npm run start -w @specforge/backend
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PREFIX
+        value: /api/v1
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        fromDatabase:
+          name: specforge-ai-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: INTEGRATION_SECRET_KEY
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_REASONING_EFFORT
+        value: medium
+      - key: AI_MAX_INPUT_CHARACTERS
+        value: "60000"
+      - key: AI_REQUEST_TIMEOUT_MS
+        value: "120000"
+      - key: AI_MAX_RETRIES
+        value: "2"
+      - key: AI_MONTHLY_JOB_QUOTA
+        value: "100"
+      - key: AI_MONTHLY_TOKEN_QUOTA
+        value: "1000000"
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.05"
+
+  - type: web
+    name: specforge-ai-web
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm ci && npm run build -w @specforge/frontend
+    startCommand: npm run start -w @specforge/frontend -- -p $PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: NEXT_PUBLIC_SENTRY_DSN
+        sync: false
+      - key: NEXT_PUBLIC_SENTRY_ENVIRONMENT
+        value: production
+      - key: NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE
+        value: "0.05"
+
+databases:
+  - name: specforge-ai-db
+    plan: basic-256mb
+    databaseName: specforge
+    user: specforge

@@ -174,7 +174,7 @@ $env:FRONTEND_URL="https://app.example.com"
 npm run deploy:smoke
 ```
 
-See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the full deployment runbook, required environment values, rollback steps, backup/restore drill, and manual pilot smoke flow.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Render deployment steps and [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the full production runbook, required environment values, rollback steps, backup/restore drill, and manual pilot smoke flow.
 
 ## Backend integration tests
 
