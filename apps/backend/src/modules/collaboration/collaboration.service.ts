@@ -49,6 +49,17 @@ function hashInvitationToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function createMentionHandles(user: { name: string; email: string }) {
+  const emailHandle = user.email.split("@")[0]?.toLowerCase() ?? "";
+  const nameHandle = user.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  return new Set([emailHandle, nameHandle].filter(Boolean));
+}
+
+function extractMentionTokens(body: string) {
+  return new Set([...body.matchAll(/@([a-z0-9._-]+)/gi)].map((match) => match[1]?.toLowerCase()).filter((token): token is string => Boolean(token)));
+}
+
 export async function listTaskComments(userId: string, taskId: string) {
   const task = await prisma.task.findFirst({
     where: { id: taskId, project: { workspace: { memberships: { some: { userId } } } } },
@@ -72,6 +83,16 @@ export async function createTaskComment(userId: string, taskId: string, input: C
 
   const access = await getProjectAccess(userId, task.projectId);
   assertRole(access.role, WRITE_ROLES, "Viewer members cannot comment on tasks");
+  const mentionTokens = extractMentionTokens(input.body);
+  const mentionedMembers = mentionTokens.size === 0
+    ? []
+    : await prisma.workspaceMember.findMany({
+        where: { workspaceId: access.workspaceId, userId: { not: userId } },
+        select: { userId: true, user: { select: { name: true, email: true } } },
+      });
+  const mentionedUserIds = mentionedMembers
+    .filter((member) => [...createMentionHandles(member.user)].some((handle) => mentionTokens.has(handle)))
+    .map((member) => member.userId);
 
   return prisma.$transaction(async (tx) => {
     const comment = await tx.taskComment.create({
@@ -91,9 +112,21 @@ export async function createTaskComment(userId: string, taskId: string, input: C
         action: "TASK_COMMENTED",
         entityType: "TASK",
         entityId: taskId,
-        metadata: { commentId: comment.id, taskTitle: task.title },
+        metadata: { commentId: comment.id, taskTitle: task.title, mentionedUserIds },
       },
     });
+
+    if (mentionedUserIds.length > 0) {
+      await tx.notification.createMany({
+        data: mentionedUserIds.map((mentionedUserId) => ({
+          userId: mentionedUserId,
+          projectId: task.projectId,
+          title: "You were mentioned in a task comment",
+          body: task.title,
+          metadata: { taskId, commentId: comment.id },
+        })),
+      });
+    }
 
     return comment;
   });

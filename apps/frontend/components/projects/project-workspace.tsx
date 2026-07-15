@@ -600,6 +600,7 @@ function TaskCommentsPanel({
         onChange={(event) => onDraftChange(event.target.value)}
         placeholder={`Comment on "${task.title}"...`}
       />
+      <p className="mt-1 text-[11px] text-slate-500">Mention teammates with @name or @email-handle, for example @maheshray.</p>
       <Button size="sm" className="mt-2" disabled={loading || !draft.trim()} onClick={() => void onSubmit()}>
         {loading ? <><Spinner /> Posting</> : "Post comment"}
       </Button>
