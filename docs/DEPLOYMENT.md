@@ -4,25 +4,25 @@ SpecForge AI is ready to deploy after the release gate and CI pass.
 
 ## Current target
 
-Use Render for the first production pilot:
+Use Render for the backend production pilot:
 
-- PostgreSQL: Render managed PostgreSQL
+- PostgreSQL: existing Neon database
 - Backend: Render Node web service
-- Frontend: Render Node web service running Next.js
+- Frontend: existing deployed frontend
 
-The repository includes a `render.yaml` Blueprint for this setup.
+The repository includes a backend-only `render.yaml` Blueprint for this setup.
 
 ## Before creating the Blueprint
 
 Confirm CI is green on `main`, then keep these values ready:
 
 - `GROQ_API_KEY`
+- Neon `DATABASE_URL` with `sslmode=require`
+- Existing frontend URL for `FRONTEND_URL`
 - Backend `SENTRY_DSN`
-- Frontend `NEXT_PUBLIC_SENTRY_DSN`
 
 Render will generate:
 
-- `DATABASE_URL`
 - `JWT_ACCESS_SECRET`
 - `INTEGRATION_SECRET_KEY`
 
@@ -32,19 +32,19 @@ Render will generate:
 2. Create a new Blueprint from this GitHub repository.
 3. Select `render.yaml`.
 4. Fill the prompted secret values:
+   - backend `DATABASE_URL` from Neon
    - backend `GROQ_API_KEY`
    - backend `SENTRY_DSN`
-   - frontend `NEXT_PUBLIC_SENTRY_DSN`
    - backend `FRONTEND_URL`
-   - frontend `NEXT_PUBLIC_API_URL`
 5. Use the deployed frontend URL for backend `FRONTEND_URL`.
-6. Use the deployed backend API prefix for frontend `NEXT_PUBLIC_API_URL`, for example:
+6. Let Render build and deploy the backend service.
+7. After backend deployment, update the existing frontend environment with the backend API prefix:
 
    ```text
    https://specforge-ai-api.onrender.com/api/v1
    ```
 
-7. Let Render build and deploy both services.
+8. Redeploy the existing frontend so it uses the new backend.
 
 ## Post-deployment smoke checks
 
