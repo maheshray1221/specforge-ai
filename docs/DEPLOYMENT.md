@@ -10,7 +10,7 @@ Use Render for the backend production pilot:
 - Backend: Render Node web service
 - Frontend: existing deployed frontend
 
-The repository includes a backend-only `render.yaml` Blueprint for this setup.
+The repository includes a backend-only `render.yaml` Blueprint for this setup. The Render build command runs Prisma migrations because Render Free plans do not expose a separate Pre-Deploy Command field.
 
 ## Before creating the Blueprint
 
@@ -37,7 +37,12 @@ Render will generate:
    - backend `SENTRY_DSN`
    - backend `FRONTEND_URL`
 5. Use the deployed frontend URL for backend `FRONTEND_URL`.
-6. Let Render build and deploy the backend service.
+6. Let Render build and deploy the backend service. The build command must include database migration:
+
+   ```text
+   npm ci && npm run db:generate && npm run db:deploy && npm run build -w @specforge/backend
+   ```
+
 7. After backend deployment, update the existing frontend environment with the backend API prefix:
 
    ```text

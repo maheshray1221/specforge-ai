@@ -4,8 +4,7 @@ services:
     runtime: node
     plan: starter
     rootDir: .
-    buildCommand: npm ci && npm run db:generate && npm run build -w @specforge/backend
-    preDeployCommand: npm run db:deploy
+    buildCommand: npm ci && npm run db:generate && npm run db:deploy && npm run build -w @specforge/backend
     startCommand: npm run start -w @specforge/backend
     healthCheckPath: /api/v1/health
     envVars:
